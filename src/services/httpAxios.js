@@ -1,16 +1,19 @@
-import axios from "axios";
-const http = axios.create({
-baseURL: "http://127.0.0.1:8000/api/",
+import axios from 'axios';
 
-  
+const httpAxios = axios.create({
+    baseURL: 'http://127.0.0.1:8000/api/',
+    headers: {
+        'Accept': 'application/json',
+    },
 });
-httpAxios.interceptors.reponse.use(function onFulfilled(response) {
-    return response.data;
 
+httpAxios.interceptors.response.use(
+    (response) => {
+        return response.data;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);      
 
-},function onRejected(error) {
-    return Promise.reject(error);
-}
-
-);
-export default  httpAxios;
+export default httpAxios;

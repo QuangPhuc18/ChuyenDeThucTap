@@ -78,12 +78,96 @@ export default function AdminLayout({ children }) {
                   >
                     Product
                   </Link>
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                    Categoty
-                  </button>
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                    Billing
-                  </button>
+                  <Link 
+                    href="/admin/categories"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/categories')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    Categories
+                  </Link>
+                <Link 
+                    href="/admin/user"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/user')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    User
+                  </Link>
+                  <Link 
+                    href="/admin/banner"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/banner')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    banner
+                  </Link>
+                   <Link 
+                    href="/admin/contact"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/contact')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    Contact
+                  </Link>
+                   <Link 
+                    href="/admin/config"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/config')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    Config
+                  </Link>
+                    <Link 
+                    href="/admin/post"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/post')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    Post
+                  </Link>
+                   <Link 
+                    href="/admin/order"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/order')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    order
+                  </Link>
+                   <Link 
+                    href="/admin/product_sales"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/product_sales')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    product_sales
+                  </Link>
+                   <Link 
+                    href="/admin/product_store"
+                    className={`block w-full text-left px-3 py-2 text-sm rounded-lg ${
+                      pathname.includes('/admin/product_store')
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    product_store
+                  </Link>
                 </div>
               )}
             </div>

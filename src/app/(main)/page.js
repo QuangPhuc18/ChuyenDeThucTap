@@ -4,29 +4,27 @@ import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Heart, Star, Coffee, Snowflake, Leaf, Cake, ShoppingBag, Sparkles, Zap, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
-export default function HomePage() {
-  // --- CẤU HÌNH ---
-  const API_URL = 'http://127.0.0.1:8000/api/products';
+// Import Service (Thay đổi đường dẫn '../services...' cho đúng với cấu trúc thư mục của bạn)
+import ProductService from '../../services/ProductService';
 
+export default function HomePage() {
   // --- STATE ---
-  // State chung chứa dữ liệu từ API
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // State Slider cho 2 phần riêng biệt
-  const [topSectionIndex, setTopSectionIndex] = useState(0);    // Slider phần trên (Coffee)
-  const [bottomSectionIndex, setBottomSectionIndex] = useState(0); // Slider phần dưới (Dessert cũ)
-  
+  const [topSectionIndex, setTopSectionIndex] = useState(0);    
+  const [bottomSectionIndex, setBottomSectionIndex] = useState(0); 
   // Slider cho phần Sale (dữ liệu tĩnh)
   const [saleIndex, setSaleIndex] = useState(0);     
 
-  // --- CALL API ---
+  // --- CALL API (Sử dụng ProductService) ---
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        // Lấy limit=20 để đủ chia cho 2 mục nếu cần
-        const res = await fetch(`${API_URL}?limit=20`);
-        const result = await res.json();
+        // Gọi qua Service thay vì fetch trực tiếp
+        // limit=20 để có đủ sản phẩm chia cho 2 slider
+        const result = await ProductService.getList({ limit: 20 });
         
         if (result.status) {
           setProducts(result.data);
@@ -86,7 +84,7 @@ export default function HomePage() {
     const price = isApi ? formatPrice(rawPrice) : rawPrice;
     
     // Badge
-    const badge = product.badge || (isApi ? (product.quantity > 0 ? 'New' : 'Sold Out') : ''); 
+    const badge = product.badge || (isApi ? (product.quantity > 0 ? 'New' : '') : ''); 
 
     return (
       <div className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 h-full flex flex-col">
@@ -293,13 +291,13 @@ export default function HomePage() {
                         <ProductCard key={product.id} product={product} isSale={false} isApi={true} />
                       ))
                   ) : (
-                      <p className="col-span-4 text-center text-gray-500 italic">Hiện chưa có sản phẩm nào.</p>
+                      <p className="col-span-4 text-center text-gray-500 italic">No products available.</p>
                   )}
                 </div>
             )}
             
             {/* Logic Slider tương tự như trên */}
-            {products.length > 4 && (
+            {products.length > 5 && (
                 <>
                 <button 
                     onClick={() => setBottomSectionIndex(Math.max(0, bottomSectionIndex - 1))} 

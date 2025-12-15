@@ -1,126 +1,94 @@
-// import Link from 'next/link'
+import Link from 'next/link';
+import ImageGallery from '../../../../components/ImageGallery';
+import SizeSelector from '../../../../components/SizeSelector';
 
-// export const metadata = {
-//   title: 'Chi tiết sản phẩm'
-// }
+// Import Service (Điều chỉnh đường dẫn tương đối tùy theo cấu trúc thư mục của bạn)
+// Ví dụ: nếu file này ở app/product/[slug]/page.js thì đường dẫn là ../../../services/ProductService
+import ProductService from '@/services/ProductService'; 
 
-// // Server component hiển thị chi tiết; sửa Link quay lại không dùng <a>
-// export default async function ProductPage({ params }) {
-//   const { slug } = params
-
-//   // Mock data (thay bằng fetch từ API khi có)
-//   const product = {
-//     id: slug,
-//     name: `Tên sản phẩm (${slug})`,
-//     description: 'Mô tả chi tiết sản phẩm, thông số kỹ thuật, lợi ích, thông tin bảo hành...',
-//     price: 'Rs. 250',
-//     image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&q=80'
-//   }
-
-//   if (!product) {
-//     return <div className="container mx-auto px-4 py-8">Không tìm thấy sản phẩm</div>
-//   }
-
-//   return (
-//     <div className="container mx-auto px-4 py-8">
-//       <div className="mb-4">
-//         <Link href="/product" className="text-sm text-blue-600">← Quay lại danh sách sản phẩm</Link>
-//       </div>
-
-//       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-//         <div>
-//           <img src={product.image} alt={product.name} className="w-full h-[480px] object-cover rounded-md" />
-//         </div>
-//         <div>
-//           <h1 className="text-3xl font-bold mb-3">{product.name}</h1>
-//           <div className="text-2xl text-red-600 font-semibold mb-4">{product.price}</div>
-//           <p className="text-gray-700 mb-6">{product.description}</p>
-
-//           <div className="flex gap-3">
-//             <button className="bg-amber-900 text-white px-6 py-2 rounded-md hover:bg-amber-800">Thêm vào giỏ</button>
-//             <button className="border px-6 py-2 rounded-md">Mua ngay</button>
-//           </div>
-//         </div>
-//       </div>
-
-//       <section className="mt-12">
-//         <h2 className="text-xl font-semibold mb-3">Chi tiết sản phẩm</h2>
-//         <p className="text-gray-700">Chi tiết kỹ thuật, kích thước, trọng lượng, bảo hành, v.v.</p>
-//       </section>
-//     </div>
-//   )
-// }
-import Link from 'next/link'
-import ImageGallery from '../../../../components/ImageGallery'
-import SizeSelector from '../../../../components/SizeSelector'
+// Hàm lấy dữ liệu (Chạy trên Server)
+async function getProductData(id) {
+  try {
+    const productData = await ProductService.getById(id);
+    // Lấy danh sách để làm mục "Có thể bạn thích", lấy limit lớn chút để random
+    const relatedData = await ProductService.getList({ limit: 20 }); 
+    
+    return {
+      product: productData.status ? productData.data : null,
+      relatedList: relatedData.status ? relatedData.data : []
+    };
+  } catch (error) {
+    console.error("Error fetching product:", error);
+    return { product: null, relatedList: [] };
+  }
+}
 
 export const metadata = {
   title: 'Chi tiết sản phẩm'
-}
+};
 
-// Server component
+// Server Component
 export default async function ProductPage({ params }) {
-  const { slug } = params
+  // Trong Next.js 15+, params cần được await
+  const { slug } = await params; // Ở đây slug chính là ID sản phẩm (theo cấu trúc link hiện tại)
 
-  // Mock data - thay bằng fetch API thực tế
-  const product = {
-    id: slug,
-    name: `Cà Phê Đen Đá (${slug})`,
-    description: 'Cà phê đen đá truyền thống được pha từ hạt cà phê Robusta nguyên chất 100%, rang xay theo công thức độc quyền. Hương vị đậm đà, thơm nồng đặc trưng của cà phê Việt Nam, mang đến năng lượng tràn đầy cho cả ngày dài.',
-    price: '35.000đ',
-    oldPrice: '45.000đ',
-    discount: '22%',
-    rating: 4.9,
-    reviews: 256,
-    image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&q=80',
-    secondaryImage: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=800&q=80',
-    category: '☕ Cà phê'
-  }
+  // 1. Lấy dữ liệu từ API
+  const { product: apiProduct, relatedList } = await getProductData(slug);
 
-  const relatedProducts = [
-    {
-      id: 'product-1',
-      name: 'Cà Phê Sữa Đá',
-      price: '32.000đ',
-      oldPrice: '40.000đ',
-      image: 'https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?w=400&q=80',
-      tag: 'Bán chạy'
-    },
-    {
-      id: 'product-2',
-      name: 'Trà Đào Cam Sả',
-      price: '45.000đ',
-      oldPrice: '55.000đ',
-      image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&q=80',
-      tag: 'Mới'
-    },
-    {
-      id: 'product-3',
-      name: 'Freeze Chocolate',
-      price: '52.000đ',
-      oldPrice: '65.000đ',
-      image: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=400&q=80',
-      tag: 'Hot'
-    },
-    {
-      id: 'product-4',
-      name: 'Trà Sữa Trân Châu',
-      price: '38.000đ',
-      oldPrice: '48.000đ',
-      image: 'https://images.unsplash.com/photo-1525385133512-2f3bdd039054?w=400&q=80',
-      tag: 'Yêu thích'
-    }
-  ]
-
-  if (!product) {
+  // Xử lý trường hợp không tìm thấy
+  if (!apiProduct) {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Không tìm thấy sản phẩm</h1>
-        <Link href="/product" className="text-amber-700 hover:underline">← Quay lại menu</Link>
+        <Link href="/" className="text-amber-700 hover:underline">← Quay lại trang chủ</Link>
       </div>
-    )
+    );
   }
 
+  // 2. Helper format tiền
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+  };
+
+  // Helper mapping Category ID sang tên (Vì API chỉ trả category_id)
+  const getCategoryName = (id) => {
+    const map = { 1: '☕ Cà phê', 2: '🍵 Trà', 3: '❄️ Freeze', 4: '🍰 Bánh ngọt' };
+    return map[id] || 'Sản phẩm';
+  };
+
+  // 3. Chuyển đổi dữ liệu API sang format UI
+  const product = {
+    id: apiProduct.id,
+    name: apiProduct.name,
+    // Nếu không có mô tả, dùng text mặc định
+    description: apiProduct.description || 'Hương vị đậm đà, thơm nồng đặc trưng, mang đến năng lượng tràn đầy cho cả ngày dài.',
+    price: formatPrice(apiProduct.price_buy),
+    // Giả lập giá cũ cao hơn 20% để hiện discount
+    oldPrice: formatPrice(apiProduct.price_buy * 1.2), 
+    discount: '20%', 
+    rating: 4.9, // Mock data
+    reviews: 256, // Mock data
+    // Dùng image_url từ backend, nếu không có thì dùng ảnh placeholder
+    image: apiProduct.image_url || 'https://via.placeholder.com/800x800?text=No+Image',
+    secondaryImage: apiProduct.image_url || 'https://via.placeholder.com/800x800?text=No+Image',
+    category: getCategoryName(apiProduct.category_id)
+  };
+
+  // 4. Xử lý "Món khác có thể bạn thích" (Random ngẫu nhiên)
+  const relatedProducts = relatedList
+    .filter(item => item.id !== apiProduct.id) // Loại bỏ sản phẩm đang xem
+    .sort(() => 0.5 - Math.random()) // Thuật toán shuffle ngẫu nhiên
+    .slice(0, 4) // Lấy 4 sản phẩm đầu tiên sau khi trộn
+    .map(item => ({
+      id: item.id,
+      name: item.name,
+      price: formatPrice(item.price_buy),
+      oldPrice: formatPrice(item.price_buy * 1.1), // Giả lập giá cũ
+      image: item.image_url || 'https://via.placeholder.com/400x400?text=No+Image',
+      tag: 'Gợi ý' // Tag cố định hoặc random
+    }));
+
+  // --- RENDER UI (Giữ nguyên code giao diện cũ) ---
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-white">
       <div className="container mx-auto px-4 py-6">
@@ -128,7 +96,7 @@ export default async function ProductPage({ params }) {
         <nav className="mb-6 flex items-center gap-2 text-sm">
           <Link href="/" className="text-gray-600 hover:text-amber-700 transition-colors">Trang chủ</Link>
           <span className="text-gray-400">/</span>
-          <Link href="/product" className="text-gray-600 hover:text-amber-700 transition-colors">Menu</Link>
+          <Link href="/" className="text-gray-600 hover:text-amber-700 transition-colors">Menu</Link>
           <span className="text-gray-400">/</span>
           <span className="text-gray-900 font-medium">{product.name}</span>
         </nav>
@@ -266,38 +234,44 @@ export default async function ProductPage({ params }) {
             <h2 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
               <span className="text-3xl">🍹</span> Món khác có thể bạn thích
             </h2>
-            <Link href="/product" className="text-amber-700 hover:underline font-semibold text-lg">
+            <Link href="/" className="text-amber-700 hover:underline font-semibold text-lg">
               Xem menu →
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {relatedProducts.map(item => (
-              <Link
-                key={item.id}
-                href={`/product/${item.id}`}
-                className="group bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-2 border border-amber-100"
-              >
-                <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-amber-50 to-orange-50">
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                  <div className="absolute top-3 right-3 bg-gradient-to-r from-red-500 to-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
-                    {item.tag}
+            {relatedProducts.length > 0 ? (
+              relatedProducts.map(item => (
+                <Link
+                  key={item.id}
+                  href={`/product/${item.id}`}
+                  className="group bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-2 border border-amber-100"
+                >
+                  <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-amber-50 to-orange-50">
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    />
+                    <div className="absolute top-3 right-3 bg-gradient-to-r from-red-500 to-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
+                      {item.tag}
+                    </div>
                   </div>
-                </div>
-                <div className="p-5">
-                  <h3 className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-amber-700 transition-colors min-h-[3rem]">
-                    {item.name}
-                  </h3>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xl font-bold text-amber-700">{item.price}</span>
-                    <span className="text-sm text-gray-400 line-through">{item.oldPrice}</span>
+                  <div className="p-5">
+                    <h3 className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-amber-700 transition-colors min-h-[3rem]">
+                      {item.name}
+                    </h3>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-bold text-amber-700">{item.price}</span>
+                      <span className="text-sm text-gray-400 line-through">{item.oldPrice}</span>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))
+            ) : (
+              <div className="col-span-full text-center text-gray-500">
+                Đang cập nhật thêm sản phẩm...
+              </div>
+            )}
           </div>
         </section>
       </div>
