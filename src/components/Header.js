@@ -108,8 +108,8 @@ export default function CoffeeHeader() {
               <a href="/" className="text-white text-sm font-medium hover:text-amber-200 transition">
                 HOME
               </a>
-              <a href="#" className="text-white text-sm font-medium hover:text-amber-200 transition">
-                COFFEE
+              <a href="/profile" className="text-white text-sm font-medium hover:text-amber-200 transition">
+                PROFILE
               </a>
               <a href="#" className="text-white text-sm font-medium hover:text-amber-200 transition">
                 BAKERY

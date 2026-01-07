@@ -3,30 +3,32 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import UserService from '@/services/UserService' 
 
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get('redirect') || '/'
 
-  const [email, setEmail] = useState('')
+  // [SỬA] Đổi tên state 'email' -> 'loginInput' cho đúng bản chất
+  const [loginInput, setLoginInput] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const validateEmail = (e) => {
-    // simple email check
-    return /\S+@\S+\.\S+/.test(e)
+  // Validate đơn giản: Không được để trống
+  const validateInput = (val) => {
+    return val && val.trim().length > 0;
   }
 
   const handleSubmit = async (ev) => {
     ev.preventDefault()
     setError('')
 
-    if (!email || !validateEmail(email)) {
-      setError('Vui lòng nhập email hợp lệ.')
+    if (!validateInput(loginInput)) {
+      setError('Vui lòng nhập Email, Số điện thoại hoặc Tên đăng nhập.')
       return
     }
     if (!password || password.length < 6) {
@@ -35,29 +37,54 @@ export default function LoginPage() {
     }
 
     setLoading(true)
+    
     try {
-      // TODO: Thay đoạn MOCK bằng call API thực tế của bạn
-      // const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ email, password })
-      // })
-      // if (!res.ok) throw new Error('Đăng nhập thất bại')
-      // const data = await res.json()
-      // localStorage.setItem('authToken', data.token)
+      // 1. Gọi API login (truyền loginInput thay vì email)
+      const res = await UserService.login(loginInput, password);
 
-      // MOCK behavior (simulate network)
-      await new Promise((r) => setTimeout(r, 800))
-      // simple mock auth: if email includes "admin" treat as admin demo
-      localStorage.setItem('authToken', 'demo-token')
-      localStorage.setItem('userEmail', email)
-      if (remember) localStorage.setItem('rememberMe', '1')
+      // 2. Kiểm tra status trả về từ Backend
+      if (res && res.status) {
+          // A. Lưu Token (Quan trọng: Key phải là 'authToken' khớp với httpAxios.js)
+          localStorage.setItem('authToken', res.access_token)
+          
+          // B. Lưu thông tin User
+          localStorage.setItem('user', JSON.stringify(res.data))
+          
+          // C. Xử lý "Ghi nhớ đăng nhập"
+          if (remember) {
+            localStorage.setItem('rememberMe', '1')
+            // Lưu lại tên đăng nhập để lần sau tự điền
+            localStorage.setItem('savedLogin', loginInput)
+          } else {
+            localStorage.removeItem('rememberMe')
+            localStorage.removeItem('savedLogin')
+          }
 
-      // redirect back to intended page
-      router.push(redirectTo)
+          // D. Bắn sự kiện để Header cập nhật Avatar ngay lập tức
+          if (typeof window !== 'undefined') {
+              window.dispatchEvent(new Event('auth:login'));
+          }
+
+          // E. Chuyển hướng
+          router.push(redirectTo)
+      } else {
+          // Trường hợp API trả về 200 nhưng logic báo lỗi (status: false)
+          setError(res.message || 'Đăng nhập thất bại.');
+      }
+
     } catch (err) {
-      console.error(err)
-      setError(err?.message || 'Đăng nhập thất bại. Vui lòng thử lại.')
+      console.error("Login Error:", err)
+      
+      // Xử lý hiển thị lỗi từ Backend (Laravel trả về 401 hoặc 422)
+      let errorMessage = 'Đăng nhập thất bại. Vui lòng kiểm tra lại.';
+      
+      if (err.response && err.response.data) {
+          errorMessage = err.response.data.message || errorMessage;
+      } else if (err.message) {
+          errorMessage = err.message;
+      }
+      
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -81,7 +108,7 @@ export default function LoginPage() {
             />
             <div className="p-4 bg-white">
               <p className="text-sm text-gray-700">
-                Tip: Bạn có thể dùng email bất kỳ trong demo để đăng nhập. Nếu muốn admin demo, email chứa "admin".
+                Tip: Bạn có thể đăng nhập bằng <b>Email</b>, <b>Số điện thoại</b> hoặc <b>Tên đăng nhập</b>.
               </p>
             </div>
           </div>
@@ -100,18 +127,28 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            
+            {/* Hiển thị lỗi */}
+            {error && (
+              <div role="alert" aria-live="assertive" className="text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded animate-pulse">
+                ⚠️ {error}
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Email, SĐT hoặc Tên đăng nhập</label>
               <input
-                type="email"
-                name="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-200"
-                placeholder="you@example.com"
+                type="text"
+                name="loginInput"
+                autoComplete="username"
+                value={loginInput}
+                onChange={(e) => {
+                    setLoginInput(e.target.value);
+                    if(error) setError('');
+                }}
+                className="w-full border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-200 transition-all"
+                placeholder="Nhập tài khoản..."
                 required
-                aria-invalid={!!error && !validateEmail(email)}
               />
             </div>
 
@@ -123,18 +160,20 @@ export default function LoginPage() {
                   name="password"
                   autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                  onChange={(e) => {
+                      setPassword(e.target.value);
+                      if(error) setError('');
+                  }}
+                  className="w-full border border-gray-200 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-amber-200 transition-all"
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((s) => !s)}
-                  className="absolute inset-y-0 right-3 flex items-center text-gray-500"
+                  className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-amber-700"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {/* simple eye icon */}
                   {showPassword ? (
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-5 0-9-4-9-7s4-7 9-7c1.657 0 3.22.402 4.625 1.115M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -149,7 +188,7 @@ export default function LoginPage() {
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="inline-flex items-center gap-2 text-sm">
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={remember}
@@ -162,25 +201,21 @@ export default function LoginPage() {
               <Link href="/forgot-password" className="text-sm text-amber-900 hover:underline">Quên mật khẩu?</Link>
             </div>
 
-            {error && (
-              <div role="alert" aria-live="assertive" className="text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded">
-                {error}
-              </div>
-            )}
-
             <div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full inline-flex items-center justify-center gap-2 bg-amber-900 text-white px-4 py-3 rounded-lg font-medium hover:bg-amber-800 transition disabled:opacity-60"
+                className="w-full inline-flex items-center justify-center gap-2 bg-amber-900 text-white px-4 py-3 rounded-lg font-medium hover:bg-amber-800 transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
-                {loading && (
-                  <svg className="animate-spin -ml-1 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                  </svg>
-                )}
-                <span>{loading ? 'Đang đăng nhập...' : 'Đăng nhập'}</span>
+                {loading ? (
+                  <>
+                    <svg className="animate-spin -ml-1 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : 'Đăng nhập'}
               </button>
             </div>
           </form>
@@ -192,8 +227,8 @@ export default function LoginPage() {
 
             <div className="mt-4 grid grid-cols-2 gap-3">
               <button
-                onClick={() => alert('Chức năng demo. Tích hợp OAuth ở backend.')}
-                className="flex items-center justify-center gap-2 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50"
+                onClick={() => alert('Chức năng đang phát triển')}
+                className="flex items-center justify-center gap-2 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors"
               >
                 <svg className="h-5 w-5" viewBox="0 0 533.5 544.3" xmlns="http://www.w3.org/2000/svg">
                   <path d="M533.5 278.4c0-17.4-1.4-34.1-4-50.4H272v95.6h147.4c-6.3 33.8-25 62.5-53.2 81.8v68.1h85.8c50.2-46.2 79.5-114.6 79.5-195.1z" fill="#4285F4"/>
@@ -205,10 +240,10 @@ export default function LoginPage() {
               </button>
 
               <button
-                onClick={() => alert('Chức năng demo. Tích hợp OAuth ở backend.')}
-                className="flex items-center justify-center gap-2 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50"
+                onClick={() => alert('Chức năng đang phát triển')}
+                className="flex items-center justify-center gap-2 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors"
               >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879v-6.99H8.898v-2.89h1.54V9.845c0-1.522.904-2.365 2.288-2.365.662 0 1.355.12 1.355.12v1.49h-.76c-.75 0-.984.466-.984.945v1.13h1.672l-.267 2.89h-1.405V21.88C18.343 21.128 22 16.991 22 12z" />
                 </svg>
                 <span className="text-sm">Facebook</span>
@@ -218,7 +253,7 @@ export default function LoginPage() {
 
           <p className="mt-6 text-center text-sm text-gray-500">
             Chưa có tài khoản?{' '}
-            <Link href="/auth/register" className="text-amber-900 hover:underline">Đăng ký</Link>
+            <Link href="/auth/register" className="text-amber-900 hover:underline font-bold">Đăng ký ngay</Link>
           </p>
         </div>
       </div>

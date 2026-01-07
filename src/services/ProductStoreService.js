@@ -1,31 +1,31 @@
 import axios from "axios";
-
-// Đổi URL này theo cấu hình backend của bạn
+import httpAxios from "./httpAxios";
+// Đảm bảo URL này đúng với server Laravel đang chạy (thường là port 8000)
 const API_URL = "http://localhost:8000/api/store"; 
 
 const ProductStoreService = {
-  // Nhập kho (Import Goods)
+  // 1. Lấy danh sách tồn kho
+  getAll: async (params) => {
+    try {
+      const response = await axios.get(API_URL, { params });
+      return response.data; 
+    } catch (error) {
+      console.error("API getAll Error:", error);
+      throw error;
+    }
+  },
+
+  // 2. Nhập kho (Import)
   import: async (data) => {
     try {
-      // Data gửi lên: { product_id, qty_import, price_root }
       const response = await axios.post(`${API_URL}/import`, data);
       return response.data;
     } catch (error) {
       throw error;
     }
   },
-
-  // Lấy danh sách tồn kho (nếu cần hiển thị ở trang khác)
-  getAll: async (params) => {
-    try {
-      const response = await axios.get(API_URL, { params });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }, // <--- Đã thêm dấu phẩy ở đây
-
-  // Xóa sản phẩm khỏi kho
+update: async (id, data) => await httpAxios.put(`store/${id}`, data),
+  // 3. Xóa sản phẩm khỏi kho
   delete: async (productId) => {
     try {
       const response = await axios.delete(`${API_URL}/${productId}`);

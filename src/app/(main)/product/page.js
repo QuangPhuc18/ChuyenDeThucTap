@@ -2,56 +2,86 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Search, SlidersHorizontal, X, ChevronDown, ChevronLeft, ChevronRight, Grid3x3, List, Heart, ShoppingBag, Star } from 'lucide-react'
+import {
+  Search,
+  SlidersHorizontal,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Grid3x3,
+  List,
+  Heart,
+  ShoppingBag,
+  Star
+} from 'lucide-react'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+const IMAGE_FALLBACK = '/images/placeholder.png'
 
 // Price formatter
-function formatPrice(v) {
-  if (v == null) return '-'
-  return v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '₫'
+const formatPrice = (v) => {
+  if (v == null || v === '' || isNaN(Number(v))) return '-'
+  return Number(v).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '₫'
 }
 
-// Build pagination items with ellipses: returns array of numbers and '...'
+// Build pagination items with ellipses
 function getPaginationPages(totalPages, currentPage) {
   const pages = []
   totalPages = Number(totalPages) || 1
   currentPage = Number(currentPage) || 1
-
-  // If small number of pages, show all
   if (totalPages <= 7) {
     for (let i = 1; i <= totalPages; i++) pages.push(i)
     return pages
   }
-
-  // Always show first
   pages.push(1)
-
-  // Left gap
-  if (currentPage > 4) {
-    pages.push('left-ellipsis')
-  }
-
-  // Middle range (current -1 .. current +1)
+  if (currentPage > 4) pages.push('left-ellipsis')
   const start = Math.max(2, currentPage - 1)
   const end = Math.min(totalPages - 1, currentPage + 1)
-  for (let i = start; i <= end; i++) {
-    pages.push(i)
-  }
-
-  // Right gap
-  if (currentPage < totalPages - 3) {
-    pages.push('right-ellipsis')
-  }
-
-  // Always show last
+  for (let i = start; i <= end; i++) pages.push(i)
+  if (currentPage < totalPages - 3) pages.push('right-ellipsis')
   pages.push(totalPages)
-
-  // Ensure uniqueness and order
   return pages.filter((v, idx, arr) => arr.indexOf(v) === idx)
 }
 
-// Product Card Component
+// Map backend product to UI model
+const mapProduct = (p) => {
+  const priceRaw =
+    p.price_final ??
+    p.salePrice ??
+    p.sale_price ??
+    p.price_discount ??
+    p.price ??
+    p.price_buy ??
+    0
+
+  const originalRaw =
+    p.price_buy ??
+    p.original_price ??
+    p.old_price ??
+    p.price ??
+    priceRaw
+
+  const hasSale = Number(originalRaw) > Number(priceRaw)
+  const image =
+    p.image_url ||
+    p.thumbnail ||
+    (Array.isArray(p.images) ? p.images[0] : null) ||
+    p.image ||
+    IMAGE_FALLBACK
+
+  return {
+    id: p.id,
+    slug: p.slug || p.id,
+    name: p.name || p.title || 'Sản phẩm',
+    price: priceRaw,
+    oldPrice: hasSale ? originalRaw : null,
+    image,
+    badge: hasSale ? 'Sale' : p.badge,
+    description: p.description
+  }
+}
+
+// Product Card
 function ProductCard({ product, onAdd, viewMode }) {
   const slug = product.slug || product.id
   const isListView = viewMode === 'list'
@@ -61,9 +91,10 @@ function ProductCard({ product, onAdd, viewMode }) {
       <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 flex">
         <Link href={`/product/${slug}`} className="w-64 flex-shrink-0">
           <img
-            src={product.image || '/images/placeholder.png'}
+            src={product.image || IMAGE_FALLBACK}
             alt={product.name}
             className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+            onError={(e) => { e.currentTarget.src = IMAGE_FALLBACK }}
           />
         </Link>
         <div className="flex-1 p-6 flex flex-col justify-between">
@@ -127,9 +158,10 @@ function ProductCard({ product, onAdd, viewMode }) {
       <div className="relative overflow-hidden">
         <Link href={`/product/${slug}`}>
           <img
-            src={product.image || '/images/placeholder.png'}
+            src={product.image || IMAGE_FALLBACK}
             alt={product.name}
             className="w-full h-64 object-cover cursor-pointer transform group-hover:scale-110 transition-transform duration-500"
+            onError={(e) => { e.currentTarget.src = IMAGE_FALLBACK }}
           />
         </Link>
         {product.badge && (
@@ -182,7 +214,6 @@ export default function ProductListPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   
-  // Filters
   const [showFilters, setShowFilters] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -190,13 +221,11 @@ export default function ProductListPage() {
   const [sortBy, setSortBy] = useState('newest')
   const [viewMode, setViewMode] = useState('grid')
   
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const itemsPerPage = 12
 
-  // Categories
   const categories = [
     { id: 'all', name: 'Tất cả', icon: '🏪' },
     { id: 'coffee', name: 'Cà phê', icon: '☕' },
@@ -205,7 +234,6 @@ export default function ProductListPage() {
     { id: 'dessert', name: 'Bánh ngọt', icon: '🍰' }
   ]
 
-  // Price ranges
   const priceRanges = [
     { id: 'all', label: 'Tất cả giá', min: 0, max: 999999999 },
     { id: 'under-30k', label: 'Dưới 30.000₫', min: 0, max: 30000 },
@@ -214,7 +242,6 @@ export default function ProductListPage() {
     { id: 'above-70k', label: 'Trên 70.000₫', min: 70000, max: 999999999 }
   ]
 
-  // Sort options
   const sortOptions = [
     { id: 'newest', label: 'Mới nhất' },
     { id: 'popular', label: 'Phổ biến' },
@@ -225,7 +252,6 @@ export default function ProductListPage() {
 
   useEffect(() => {
     loadProducts()
-    // scroll top when page/filter changes
     window.scrollTo({ top: 0, behavior: 'smooth' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, selectedCategory, selectedPriceRange, sortBy, currentPage])
@@ -235,13 +261,8 @@ export default function ProductListPage() {
     setError('')
     try {
       const url = new URL(`${API_BASE}/products`)
-      
-      if (search.trim()) {
-        url.searchParams.set('search', search.trim())
-      }
-      if (selectedCategory && selectedCategory !== 'all') {
-        url.searchParams.set('category', selectedCategory)
-      }
+      if (search.trim()) url.searchParams.set('search', search.trim())
+      if (selectedCategory && selectedCategory !== 'all') url.searchParams.set('category', selectedCategory)
       if (selectedPriceRange && selectedPriceRange !== 'all') {
         const range = priceRanges.find(r => r.id === selectedPriceRange)
         if (range) {
@@ -254,14 +275,13 @@ export default function ProductListPage() {
       url.searchParams.set('limit', itemsPerPage)
 
       const res = await fetch(url.toString())
-      if (!res.ok) {
-        throw new Error('Không thể lấy dữ liệu sản phẩm')
-      }
+      if (!res.ok) throw new Error('Không thể lấy dữ liệu sản phẩm')
       const data = await res.json()
       
       const list = data.data || data
-      setProducts(Array.isArray(list) ? list : [])
-      // robust handling of pagination metadata:
+      const arr = Array.isArray(list) ? list : Array.isArray(list?.data) ? list.data : []
+      setProducts(arr.map(mapProduct))
+
       const total = Number(data.total ?? (Array.isArray(list) ? list.length : 0))
       const lastPage = Number(data.last_page ?? data.lastPage ?? Math.ceil(total / itemsPerPage))
       const perPage = Number(data.per_page ?? data.perPage ?? itemsPerPage)
@@ -316,7 +336,6 @@ export default function ProductListPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      {/* Header Section */}
       <div className="bg-gradient-to-r from-amber-900 to-orange-800 text-white py-12">
         <div className="container mx-auto px-6">
           <h1 className="text-4xl font-bold mb-4">Khám phá Menu</h1>
@@ -325,10 +344,8 @@ export default function ProductListPage() {
       </div>
 
       <div className="container mx-auto px-6 py-8">
-        {/* Search and View Controls */}
         <div className="bg-white rounded-xl shadow-md p-6 mb-6">
           <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-            {/* Search Bar */}
             <div className="relative flex-1 w-full lg:max-w-md">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -339,7 +356,6 @@ export default function ProductListPage() {
               />
             </div>
 
-            {/* Controls */}
             <div className="flex gap-3 w-full lg:w-auto">
               <button
                 onClick={() => setShowFilters(!showFilters)}
@@ -368,7 +384,6 @@ export default function ProductListPage() {
         </div>
 
         <div className="flex flex-col lg:flex-row gap-6">
-          {/* Sidebar Filters */}
           {showFilters && (
             <aside className="lg:w-72 flex-shrink-0">
               <div className="bg-white rounded-xl shadow-md p-6 sticky top-6">
@@ -385,7 +400,6 @@ export default function ProductListPage() {
                   )}
                 </div>
 
-                {/* Categories Filter */}
                 <div className="mb-6">
                   <h3 className="font-semibold text-gray-900 mb-3">Danh mục</h3>
                   <div className="space-y-2">
@@ -409,7 +423,6 @@ export default function ProductListPage() {
                   </div>
                 </div>
 
-                {/* Price Range Filter */}
                 <div className="mb-6">
                   <h3 className="font-semibold text-gray-900 mb-3">Khoảng giá</h3>
                   <div className="space-y-2">
@@ -432,7 +445,6 @@ export default function ProductListPage() {
                   </div>
                 </div>
 
-                {/* Sort Filter */}
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3">Sắp xếp theo</h3>
                   <div className="space-y-2">
@@ -458,9 +470,7 @@ export default function ProductListPage() {
             </aside>
           )}
 
-          {/* Products Grid/List */}
           <main className="flex-1">
-            {/* Results Info */}
             <div className="flex items-center justify-between mb-6">
               <p className="text-gray-600">
                 Hiển thị <span className="font-semibold text-gray-900">{products.length}</span> trong tổng số{' '}
@@ -468,7 +478,6 @@ export default function ProductListPage() {
               </p>
             </div>
 
-            {/* Loading State */}
             {loading && (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
@@ -478,14 +487,12 @@ export default function ProductListPage() {
               </div>
             )}
 
-            {/* Error State */}
             {error && (
               <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 text-center">
                 <p className="text-red-600 font-semibold">{error}</p>
               </div>
             )}
 
-            {/* Products */}
             {!loading && !error && (
               <>
                 {products.length === 0 ? (
@@ -503,23 +510,17 @@ export default function ProductListPage() {
                     )}
                   </div>
                 ) : (
-                  <div className={viewMode === 'grid' 
-                    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
-                    : 'space-y-6'
-                  }>
-                    {products.map(p => (
+                  <div
+                    className={
+                      viewMode === 'grid'
+                        ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
+                        : 'space-y-6'
+                    }
+                  >
+                    {products.map((p) => (
                       <ProductCard
                         key={p.id}
-                        product={{
-                          id: p.id,
-                          name: p.name || p.title || 'Unnamed',
-                          price: p.price || p.sale_price || 0,
-                          oldPrice: p.old_price,
-                          slug: p.slug || p.id,
-                          image: p.images?.[0] || p.image || null,
-                          badge: p.badge,
-                          description: p.description
-                        }}
+                        product={p}
                         onAdd={handleAddToCart}
                         viewMode={viewMode}
                       />
@@ -527,11 +528,10 @@ export default function ProductListPage() {
                   </div>
                 )}
 
-                {/* Pagination */}
                 {totalPages > 1 && (
                   <div className="mt-12 flex items-center justify-center gap-2">
                     <button
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                       disabled={currentPage === 1 || loading}
                       className="p-3 rounded-lg border-2 border-gray-200 hover:border-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       aria-label="Previous page"
@@ -541,7 +541,11 @@ export default function ProductListPage() {
 
                     {getPaginationPages(totalPages, currentPage).map((item, idx) => {
                       if (item === 'left-ellipsis' || item === 'right-ellipsis') {
-                        return <span key={`${item}-${idx}`} className="px-2 select-none">...</span>
+                        return (
+                          <span key={`${item}-${idx}`} className="px-2 select-none">
+                            ...
+                          </span>
+                        )
                       }
                       return (
                         <button
@@ -561,7 +565,7 @@ export default function ProductListPage() {
                     })}
 
                     <button
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                       disabled={currentPage === totalPages || loading}
                       className="p-3 rounded-lg border-2 border-gray-200 hover:border-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       aria-label="Next page"

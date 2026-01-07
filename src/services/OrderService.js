@@ -1,17 +1,17 @@
 import httpAxios from './httpAxios';
 
 const OrderService = {
+  createOrder: async (data) => {
+    // RESTful: /orders
+    return await httpAxios.post('orders', data);
+  },
+
   getList: async (params = {}) => {
     try {
-      return await httpAxios.get('order', { params });
+      return await httpAxios.get('order', { params }); // ưu tiên /order theo logic cũ
     } catch (err) {
-      // nếu server trả 404 cho 'orders', thử 'order' (fallback tạm)
-      if (err && err.status === 404) {
-        try {
-          return await httpAxios.get('order', { params });
-        } catch (e) {
-          throw e;
-        }
+      if (err?.status === 404) {
+        return await httpAxios.get('orders', { params }); // fallback /orders
       }
       throw err;
     }
@@ -19,23 +19,38 @@ const OrderService = {
 
   getById: async (id) => {
     try {
-      return await httpAxios.get(`order/${id}`);
+      return await httpAxios.get(`order/${id}`); // ưu tiên /order/{id}
     } catch (err) {
-      // fallback
-      if (err && err.status === 404) {
-        return await httpAxios.get(`order/${id}`);
+      if (err?.status === 404) {
+        return await httpAxios.get(`orders/${id}`); // fallback /orders/{id}
       }
       throw err;
     }
   },
 
+  // Gọi đúng endpoint cập nhật trạng thái mà backend có: POST order/{id}/status
+  // Fallback /orders/{id}/status nếu bạn khai báo route số nhiều
   updateStatus: async (id, body) => {
-    return await httpAxios.post(`order/${id}/status`, body);
+    try {
+      return await httpAxios.post(`order/${id}/status`, body);
+    } catch (err) {
+      if (err?.status === 404) {
+        return await httpAxios.post(`orders/${id}/status`, body);
+      }
+      throw err;
+    }
   },
 
   delete: async (id) => {
-    return await httpAxios.delete(`order/${id}`);
-  }
+    try {
+      return await httpAxios.delete(`order/${id}`);
+    } catch (err) {
+      if (err?.status === 404) {
+        return await httpAxios.delete(`orders/${id}`);
+      }
+      throw err;
+    }
+  },
 };
 
 export default OrderService;
