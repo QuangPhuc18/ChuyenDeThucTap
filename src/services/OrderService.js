@@ -1,11 +1,22 @@
 import httpAxios from './httpAxios';
 
 const OrderService = {
+  // [ĐÃ SỬA]: Hàm này xử lý riêng để lấy đúng dữ liệu trả về (chứa payUrl)
   createOrder: async (data) => {
     // RESTful: /orders
-    return await httpAxios.post('orders', data);
+    const response = await httpAxios.post('orders', data);
+
+    // FIX LỖI MOMO:
+    // Kiểm tra xem kết quả có nằm trong thuộc tính .data (của Axios) hay không.
+    // Nếu có .data thì trả về .data (để CheckoutPage lấy được payUrl), 
+    // ngược lại trả về nguyên gốc (nếu httpAxios đã xử lý interceptor trước đó).
+    if (response && response.data) {
+        return response.data;
+    }
+    return response;
   },
 
+  // --- CÁC HÀM DƯỚI ĐÂY GIỮ NGUYÊN LOGIC CŨ ---
   getList: async (params = {}) => {
     try {
       return await httpAxios.get('order', { params }); // ưu tiên /order theo logic cũ
@@ -28,8 +39,6 @@ const OrderService = {
     }
   },
 
-  // Gọi đúng endpoint cập nhật trạng thái mà backend có: POST order/{id}/status
-  // Fallback /orders/{id}/status nếu bạn khai báo route số nhiều
   updateStatus: async (id, body) => {
     try {
       return await httpAxios.post(`order/${id}/status`, body);
@@ -50,7 +59,7 @@ const OrderService = {
       }
       throw err;
     }
-  },
+  },  
 };
 
 export default OrderService;

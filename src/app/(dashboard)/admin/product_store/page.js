@@ -1,10 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, Trash2, Package, Plus, X, Save, ShoppingCart, 
-  Archive, TrendingUp, Check, Edit2, RotateCcw, Loader2 
-} from 'lucide-react';
+import { Search, Trash2, Package, Plus, X, Save, ShoppingCart, Archive, TrendingUp, Check, Edit2, RotateCcw, Loader2 } from 'lucide-react';
 import ProductStoreService from '../../../../services/ProductStoreService'; 
 import ProductService from '../../../../services/ProductService'; 
 
@@ -14,9 +11,9 @@ export default function ProductStoreTable() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // --- EDIT STATE (MỚI) ---
-  const [editingId, setEditingId] = useState(null); // ID của lô hàng đang sửa
-  const [editValues, setEditValues] = useState({ qty: 0, price: 0 }); // Giá trị đang sửa
+  // --- EDIT STATE ---
+  const [editingId, setEditingId] = useState(null); 
+  const [editValues, setEditValues] = useState({ qty: 0, price: 0 });
   const [isSaving, setIsSaving] = useState(false);
 
   // --- MODAL STATE ---
@@ -50,7 +47,7 @@ export default function ProductStoreTable() {
     return importItems.reduce((sum, p) => sum + (p.quantity * p.importPrice), 0);
   };
 
-  // --- 1. FETCH DATA ---
+  // --- 1. FETCH DATA (Lấy danh sách tồn kho) ---
   const fetchStoreData = async () => {
     try {
       const res = await ProductStoreService.getAll();
@@ -97,7 +94,7 @@ export default function ProductStoreTable() {
     ));
   };
 
-  // --- 3. LOGIC EDIT (EXISTING IMPORT) [MỚI] ---
+  // --- 3. LOGIC EDIT (EXISTING IMPORT) ---
   const handleEditClick = (product) => {
     setEditingId(product.store_id);
     setEditValues({ qty: product.quantity, price: product.importPrice });
@@ -109,7 +106,9 @@ export default function ProductStoreTable() {
   };
 
   const handleSaveEdit = async (storeId) => {
-    if(editValues.qty <= 0) return alert("Số lượng phải lớn hơn 0");
+    // [UPDATE QUAN TRỌNG]: Cho phép nhập số lượng = 0 (để ẩn sản phẩm)
+    // Không chặn min=1 nữa, chỉ chặn số âm
+    if(editValues.qty < 0) return alert("Số lượng không được âm");
     
     setIsSaving(true);
     try {
@@ -120,7 +119,6 @@ export default function ProductStoreTable() {
         
         await ProductStoreService.update(storeId, payload);
         
-        // Cập nhật lại UI ngay lập tức
         setProducts(prev => prev.map(p => {
             if (p.store_id === storeId && p.isSaved) {
                 return { ...p, quantity: editValues.qty, importPrice: editValues.price };
@@ -145,7 +143,8 @@ export default function ProductStoreTable() {
     if (product.isSaved) {
         try {
             await ProductStoreService.delete(product.store_id); 
-            setProducts(prev => prev.filter(p => p.uniqueKey !== product.uniqueKey));
+            // Load lại dữ liệu để đồng bộ trạng thái (nếu xóa hết thì sản phẩm sẽ ẩn)
+            fetchStoreData(); 
             alert("Đã xóa lô hàng khỏi kho.");
         } catch (error) {
             alert("Lỗi xóa: " + (error.response?.data?.message || "Lỗi hệ thống"));
@@ -168,31 +167,36 @@ export default function ProductStoreTable() {
       const promises = importItems.map(product => {
         return ProductStoreService.import({
           product_id: product.id,
-          quantity: product.quantity,   
-          price_import: product.importPrice 
+          // Mapping đúng tên biến Backend yêu cầu
+          qty_import: product.quantity,   
+          price_root: product.importPrice 
         });
       });
+      
       await Promise.all(promises);
+      
       alert("✅ Nhập kho thành công! Sản phẩm đã được hiển thị.");
       setProducts(prev => prev.filter(p => p.isSaved)); 
       fetchStoreData(); 
     } catch (error) {
       console.error(error);
-      alert("Có lỗi xảy ra: " + (error.response?.data?.message || error.message));
+      const msg = error.response?.data?.message || JSON.stringify(error.response?.data?.errors) || error.message;
+      alert("Có lỗi xảy ra: " + msg);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- 6. MODAL ---
+  // --- 6. MODAL (Chọn sản phẩm để nhập) ---
   const fetchModalProducts = async (page = 1, keyword = '') => {
     setLoadingModal(true);
     try {
       const params = {
           page: page,
           search: keyword,
-          for_import: true, // Lấy cả sản phẩm ẩn
-          limit: 10
+          limit: 10,
+          // [QUAN TRỌNG]: Thêm cờ này để Backend trả về cả sản phẩm Ẩn (để nhập kho)
+          for_import: true 
       };
       const res = await ProductService.getList(params); 
       if (res.status) {
@@ -340,10 +344,10 @@ export default function ProductStoreTable() {
                                                     </div>
                                                 </td>
 
-                                                {/* CỘT SỐ LƯỢNG */}
+                                                {/* CỘT SỐ LƯỢNG (Cho phép nhập 0) */}
                                                 <td className="px-5 py-3.5 text-center">
                                                     {isEditing ? (
-                                                        <input type="number" min="1" value={editValues.qty} onChange={(e) => setEditValues({...editValues, qty: e.target.value})} className="w-16 px-1 py-1 text-center border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold"/>
+                                                        <input type="number" min="0" value={editValues.qty} onChange={(e) => setEditValues({...editValues, qty: e.target.value})} className="w-16 px-1 py-1 text-center border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold"/>
                                                     ) : (
                                                         <span className="font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">{product.quantity}</span>
                                                     )}
@@ -358,7 +362,7 @@ export default function ProductStoreTable() {
                                                     )}
                                                 </td>
 
-                                                {/* CỘT THÀNH TIỀN (Tự động tính) */}
+                                                {/* CỘT THÀNH TIỀN */}
                                                 <td className="px-5 py-3.5 text-right font-bold text-blue-600">
                                                     {isEditing ? formatCurrency(editValues.qty * editValues.price) : formatCurrency(product.quantity * product.importPrice)}
                                                 </td>
@@ -366,7 +370,7 @@ export default function ProductStoreTable() {
                                                 {/* CỘT NGÀY NHẬP */}
                                                 <td className="px-5 py-3.5 text-right text-xs text-slate-500">{formatDate(product.created_at)}</td>
 
-                                                {/* CỘT HÀNH ĐỘNG (Sửa/Lưu/Xóa) */}
+                                                {/* CỘT HÀNH ĐỘNG */}
                                                 <td className="px-5 py-3.5 text-center">
                                                     <div className="flex justify-center items-center gap-1">
                                                         {isEditing ? (
@@ -402,7 +406,7 @@ export default function ProductStoreTable() {
         </div>
       </div>
 
-      {/* MODAL (Giữ nguyên) */}
+      {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -424,7 +428,14 @@ export default function ProductStoreTable() {
                              <div className="w-12 h-12 rounded-lg border border-slate-100 overflow-hidden shrink-0">
                                  <img src={getImageSrc(p.image_url || p.thumbnail)} onError={(e) => {e.target.src = "https://placehold.co/60"}} className="w-full h-full object-cover" />
                              </div>
-                             <div><p className="font-bold text-slate-800 text-sm line-clamp-1">{p.name}</p><p className="text-xs text-slate-500">Giá gốc: {formatCurrency(p.price_buy)}</p></div>
+                             <div>
+                                 <p className="font-bold text-slate-800 text-sm line-clamp-1">{p.name}</p>
+                                 <p className="text-xs text-slate-500">Giá gốc: {formatCurrency(p.price_buy)}</p>
+                                 {/* Hiển thị status để biết sản phẩm nào đang ẩn */}
+                                 <span className={`text-[10px] px-2 py-0.5 rounded-full ${p.status == 1 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                     {p.status == 1 ? 'Active' : 'Hidden'}
+                                 </span>
+                             </div>
                           </div>
                         )
                      })}

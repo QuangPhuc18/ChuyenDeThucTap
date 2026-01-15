@@ -1,69 +1,85 @@
 import httpAxios from "./httpAxios";
 
-// Chỉ dùng normalize cho các hàm getList nếu cần thiết, 
-// nhưng với cấu trúc response chuẩn {status, data} thì KHÔNG NÊN dùng normalize kiểu này.
-const normalize = (res) => res?.data ?? res;
-
 const PostService = {
+  // 1. Lấy danh sách bài viết
   getList: async (params = {}) => {
-    const res = await httpAxios.get("posts", { params });
-    // Nếu API getList trả về {data: [...], meta: ...} thì normalize ở đây có thể OK
-    // Nhưng an toàn nhất là return res để component tự xử lý
-    return normalize(res); 
+    try {
+      const res = await httpAxios.get("posts", { params });
+      // Trả về res.data để lấy JSON từ Laravel (bao gồm status, data, meta)
+      return res.data; 
+    } catch (err) {
+      return err?.response?.data ?? { status: false, message: err.message, data: [] };
+    }
   },
 
+  // 2. Lấy chi tiết theo ID (Dùng cho Admin Edit)
   getById: async (id) => {
     try {
       const res = await httpAxios.get(`posts/${id}`);
-      // 👇 SỬA: Trả về nguyên gốc res để lấy được status: true
-      return res; 
+      return res.data; // ✅ Thêm .data
     } catch (err) {
       return err?.response?.data ?? { status: false, message: err.message };
     }
   },
 
+  // 3. Lấy chi tiết theo Slug (Dùng cho Frontend xem chi tiết)
+  getDetail: async (slug) => {
+    try {
+      // Gọi đúng route api/post_detail/{slug}
+      const res = await httpAxios.get(`post_detail/${slug}`);
+      return res.data; // ✅ Thêm .data để Frontend nhận được { status: true, ... }
+    } catch (err) {
+      return err?.response?.data ?? { status: false, message: err.message };
+    }
+  },
+
+  // 4. Lấy bài viết liên quan
+  getRelated: async (topicId, excludeId) => {
+    try {
+      // Gọi đúng route api/post_related
+      const res = await httpAxios.get(`post_related/${topicId}/${excludeId}`);
+      return res.data; // ✅ Thêm .data
+    } catch (err) {
+      // Trả về data rỗng để không làm lỗi giao diện
+      return { status: false, data: [] };
+    }
+  },
+
+  // 5. Tạo mới bài viết
   create: async (data) => {
     try {
       const res = await httpAxios.post("posts", data);
-      // 👇 SỬA: Không dùng normalize
-      return res;
+      return res.data; // ✅ Thêm .data
     } catch (err) {
       return err?.response?.data ?? { status: false, message: err.message };
     }
   },
 
+  // 6. Cập nhật bài viết
   update: async (id, data) => {
     try {
       let res;
       if (data instanceof FormData) {
-        // Đảm bảo _method được set đúng
+        // Laravel method spoofing cho upload file
         if (!data.has('_method')) {
           data.append('_method', 'PUT');
         }
-        
-        // 👇 SỬA QUAN TRỌNG: 
-        // 1. Bỏ headers thủ công (Axios tự nhận diện FormData)
-        // 2. Dùng post cho method spoofing
-        res = await httpAxios.post(`posts/${id}`, data); 
+        res = await httpAxios.post(`posts/${id}`, data);
       } else {
         res = await httpAxios.put(`posts/${id}`, data);
       }
-      
-      console.log('Update response:', res);
-      
-      // 👇 SỬA QUAN TRỌNG: Return nguyên res, không normalize
-      return res; 
-
+      return res.data; // ✅ Thêm .data
     } catch (err) {
       console.error('Update error:', err);
       return err?.response?.data ?? { status: false, message: err.message };
     }
   },
 
+  // 7. Xóa bài viết
   delete: async (id) => {
     try {
       const res = await httpAxios.delete(`posts/${id}`);
-      return res; // 👇 SỬA: Return res
+      return res.data; // ✅ Thêm .data
     } catch (err) {
       return err?.response?.data ?? { status: false, message: err.message };
     }

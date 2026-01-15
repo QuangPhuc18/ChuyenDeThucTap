@@ -1,15 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
-import { Search, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, ShoppingCart, ChevronLeft, ChevronRight, X, Loader2 } from 'lucide-react'
+import httpAxios from '@/services/httpAxios' 
 
 export default function CoffeeHeader() {
+  // --- STATE CŨ (Giữ nguyên) ---
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [cartCount, setCartCount] = useState(0)
   const [currentSlide, setCurrentSlide] = useState(0)
 
-  // Dữ liệu cho carousel
+  // --- STATE MỚI CHO TÌM KIẾM ---
+  const [keyword, setKeyword] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [loadingSearch, setLoadingSearch] = useState(false)
+  const searchTimeoutRef = useRef(null) 
+
+  // Dữ liệu Carousel (Giữ nguyên)
   const slides = [
     {
       image: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=1600&q=80',
@@ -37,6 +45,7 @@ export default function CoffeeHeader() {
     }
   ]
 
+  // Logic Giỏ hàng (Giữ nguyên)
   useEffect(() => {
     const updateCount = () => {
       try {
@@ -48,7 +57,6 @@ export default function CoffeeHeader() {
         setCartCount(0)
       }
     }
-
     updateCount()
     window.addEventListener('cart:update', updateCount)
     window.addEventListener('storage', updateCount)
@@ -58,7 +66,7 @@ export default function CoffeeHeader() {
     }
   }, [])
 
-  // Auto-play carousel
+  // Auto-play carousel (Giữ nguyên)
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length)
@@ -66,34 +74,67 @@ export default function CoffeeHeader() {
     return () => clearInterval(timer)
   }, [slides.length])
 
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % slides.length)
+  // --- LOGIC TÌM KIẾM ---
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    setKeyword(value);
+
+    if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (!value.trim()) {
+        setSearchResults([]);
+        return;
+    }
+
+    setLoadingSearch(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+        try {
+            const res = await httpAxios.get(`products?search=${value}&limit=5`);
+            if (res.data && res.data.data) {
+                setSearchResults(res.data.data);
+            } else {
+                setSearchResults([]);
+            }
+        } catch (error) {
+            console.error("Lỗi tìm kiếm:", error);
+            setSearchResults([]);
+        } finally {
+            setLoadingSearch(false);
+        }
+    }, 500);
+  };
+
+  const clearSearch = () => {
+      setKeyword('');
+      setSearchResults([]);
   }
 
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length)
-  }
-
+  // --- HELPER FUNCTION ---
+  const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % slides.length)
+  const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length)
+  
   const getAccentColorClass = (color) => {
-    const colors = {
-      amber: 'text-amber-200',
-      emerald: 'text-emerald-200',
-      orange: 'text-orange-200'
-    }
+    const colors = { amber: 'text-amber-200', emerald: 'text-emerald-200', orange: 'text-orange-200' }
+    return colors[color] || colors.amber
+  }
+  
+  const getButtonColorClass = (color) => {
+    const colors = { amber: 'hover:bg-amber-200', emerald: 'hover:bg-emerald-200', orange: 'hover:bg-orange-200' }
     return colors[color] || colors.amber
   }
 
-  const getButtonColorClass = (color) => {
-    const colors = {
-      amber: 'hover:bg-amber-200',
-      emerald: 'hover:bg-emerald-200',
-      orange: 'hover:bg-orange-200'
-    }
-    return colors[color] || colors.amber
+  const formatCurrency = (amount) => {
+    if (!amount) return '0 đ';
+    const numberAmount = Number(amount);
+    return isNaN(numberAmount) 
+      ? 'Liên hệ' 
+      : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(numberAmount);
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-gray-900 relative">
       {/* Header */}
       <header className="absolute top-0 left-0 right-0 z-50 bg-transparent">
         <div className="container mx-auto px-6 py-6">
@@ -105,39 +146,27 @@ export default function CoffeeHeader() {
 
             {/* Navigation */}
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="/" className="text-white text-sm font-medium hover:text-amber-200 transition">
-                HOME
-              </a>
-              <a href="/profile" className="text-white text-sm font-medium hover:text-amber-200 transition">
-                PROFILE
-              </a>
-              <a href="#" className="text-white text-sm font-medium hover:text-amber-200 transition">
-                BAKERY
-              </a>
-              <a href="/product" className="text-white text-sm font-medium hover:text-amber-200 transition">
-                SHOP
-              </a>
-              <a href="#" className="text-white text-sm font-medium hover:text-amber-200 transition">
-                ABOUT
-              </a>
-              <a href="/auth/login" className="text-white text-sm font-medium hover:text-amber-200 transition">
-                LOGIN
-              </a>
+              <a href="/" className="text-white text-sm font-medium hover:text-amber-200 transition">Trang chủ</a>
+              <a href="/profile" className="text-white text-sm font-medium hover:text-amber-200 transition">Trang cá nhân</a>
+              <a href="posts" className="text-white text-sm font-medium hover:text-amber-200 transition">Bài viết</a>
+              <a href="/product" className="text-white text-sm font-medium hover:text-amber-200 transition">Cửa hàng</a>
+              <a href="/Contact" className="text-white text-sm font-medium hover:text-amber-200 transition">Liên hệ</a>
+              <a href="/auth/login" className="text-white text-sm font-medium hover:text-amber-200 transition">Đăng nhập</a>
             </nav>
 
             {/* Actions: Search + Cart */}
             <div className="flex items-center space-x-4">
-              {/* Search Icon */}
               <button
-                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                onClick={() => {
+                    setIsSearchOpen(!isSearchOpen);
+                    if (!isSearchOpen) setTimeout(() => document.getElementById('searchInput')?.focus(), 100);
+                }}
                 className="text-white hover:text-amber-200 transition p-2 rounded"
-                aria-label="Toggle search"
               >
-                <Search size={20} />
+                {isSearchOpen ? <X size={20} /> : <Search size={20} />}
               </button>
 
-              {/* Cart Icon with badge */}
-              <Link href="/cart" className="relative text-white hover:text-amber-200 transition p-2 rounded" aria-label="Giỏ hàng">
+              <Link href="/cart" className="relative text-white hover:text-amber-200 transition p-2 rounded">
                 <ShoppingCart size={20} />
                 {cartCount > 0 && (
                   <span className="absolute -right-1 -top-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
@@ -148,127 +177,161 @@ export default function CoffeeHeader() {
             </div>
           </div>
 
-          {/* Search Bar (expandable) */}
-          {isSearchOpen && (
-            <div className="mt-4 transition-all duration-300 ease-in-out">
-              <input
-                type="text"
-                placeholder="Search coffee, tea, bakery..."
-                className="w-full max-w-md bg-white/10 backdrop-blur-sm border border-white/30 rounded-lg px-4 py-2 text-white placeholder-white/60 focus:outline-none focus:border-amber-200 focus:ring-2 focus:ring-amber-200/50"
-                autoFocus
-              />
-            </div>
-          )}
+          {/* --- SEARCH DROPDOWN --- */}
+          <div className={`mt-4 transition-all duration-300 ease-in-out relative ${isSearchOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+            {isSearchOpen && (
+                <div className="w-full max-w-2xl mx-auto relative">
+                    {/* Input Field */}
+                    <div className="relative">
+                        <input
+                            id="searchInput"
+                            type="text"
+                            value={keyword}
+                            onChange={handleSearchChange}
+                            placeholder="Bạn muốn tìm sản phẩm gì?"
+                            className="w-full bg-white text-gray-900 rounded-t-lg rounded-b-lg border-0 px-10 py-3 shadow-lg focus:ring-0 text-base"
+                            autoComplete="off"
+                        />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        {loadingSearch && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" size={20} />}
+                        {keyword && !loadingSearch && (
+                            <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                <X size={18} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Dropdown Results */}
+                    {keyword && (
+                        <div className="absolute top-full left-0 right-0 bg-white rounded-b-lg shadow-2xl overflow-hidden mt-1 z-50 text-gray-800">
+                            
+                            {/* Gợi ý từ khóa */}
+                            <div className="p-3 border-b border-gray-100">
+                                <p className="text-sm font-semibold text-gray-500 mb-2">Có phải bạn muốn tìm</p>
+                                <ul className="space-y-1 text-sm">
+                                    <li>
+                                        <Link href={`/product?search=${keyword}`} className="flex items-center gap-2 hover:bg-gray-100 p-1.5 rounded transition">
+                                            <Search size={14} className="text-gray-400" /> 
+                                            <span>Sản phẩm liên quan đến "<strong>{keyword}</strong>"</span>
+                                        </Link>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            {/* Danh sách sản phẩm */}
+                            <div className="p-3">
+                                <p className="text-sm font-semibold text-gray-500 mb-2">Sản phẩm gợi ý</p>
+                                {loadingSearch ? (
+                                    <div className="text-center py-4 text-gray-400 text-sm">Đang tìm kiếm...</div>
+                                ) : searchResults.length > 0 ? (
+                                    <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                                        {searchResults.map((product) => {
+                                            const imageUrl = product.image_url || (product.thumbnail ? `http://127.0.0.1:8000/storage/${product.thumbnail}` : null);
+                                            const displayPrice = product.price_buy;
+
+                                            return (
+                                              <Link 
+                                                  key={product.id} 
+                                                  // 🔥 SỬA CHỖ NÀY: Dùng product.id thay vì product.slug
+                                                  href={`/product/${product.id}`} 
+                                                  className="flex items-center gap-4 hover:bg-gray-50 p-2 rounded-lg transition group"
+                                              >
+                                                  {/* Ảnh sản phẩm */}
+                                                  <div className="w-14 h-14 flex-shrink-0 bg-gray-100 rounded-md overflow-hidden border border-gray-200">
+                                                      {imageUrl ? (
+                                                          <img src={imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-300" />
+                                                      ) : (
+                                                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Img</div>
+                                                      )}
+                                                  </div>
+                                                  
+                                                  {/* Thông tin */}
+                                                  <div className="flex-1">
+                                                      <h4 className="text-sm font-medium text-gray-900 group-hover:text-amber-600 transition line-clamp-2">
+                                                          {product.name}
+                                                      </h4>
+                                                      <div className="flex items-center gap-2 mt-1">
+                                                          <span className="text-red-600 font-bold text-sm">
+                                                              {formatCurrency(displayPrice)}
+                                                          </span>
+                                                      </div>
+                                                  </div>
+                                              </Link>
+                                            )
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-6 text-gray-500 text-sm">
+                                        Không tìm thấy sản phẩm nào phù hợp.
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Footer Dropdown */}
+                            {searchResults.length > 0 && (
+                                <div className="bg-gray-50 p-2 text-center border-t border-gray-100">
+                                    <Link href={`/product?search=${keyword}`} className="text-sm text-blue-600 hover:underline">
+                                        Xem tất cả kết quả
+                                    </Link>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Hero Carousel Section */}
+      {/* Hero Carousel (Giữ nguyên) */}
       <div className="relative min-h-screen overflow-hidden">
-        {/* Slides */}
         {slides.map((slide, index) => (
           <div
             key={index}
             className={`absolute inset-0 transition-all duration-700 ease-in-out ${
-              index === currentSlide 
-                ? 'opacity-100 translate-x-0' 
-                : index < currentSlide 
-                ? 'opacity-0 -translate-x-full' 
-                : 'opacity-0 translate-x-full'
+              index === currentSlide ? 'opacity-100 translate-x-0' : index < currentSlide ? 'opacity-0 -translate-x-full' : 'opacity-0 translate-x-full'
             }`}
-            style={{
-              backgroundImage: `url(${slide.image})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center'
-            }}
+            style={{ backgroundImage: `url(${slide.image})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
           >
-            {/* Dark Overlay with gradient */}
             <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30"></div>
-
-            {/* Content */}
             <div className="container mx-auto px-6 relative z-10 h-full flex items-center">
               <div className="max-w-2xl">
-                <p className={`${getAccentColorClass(slide.accentColor)} text-sm font-medium tracking-wider mb-4 animate-fade-in`}>
-                  {slide.category}
-                </p>
-                <h2 className="text-white text-5xl md:text-6xl font-serif leading-tight mb-6 animate-slide-up">
-                  {slide.title}
-                </h2>
-                <p className="text-white/90 text-lg mb-8 leading-relaxed animate-slide-up" style={{ animationDelay: '0.1s' }}>
-                  {slide.description}
-                </p>
-                <button 
-                  className={`bg-white text-gray-900 px-8 py-3 rounded-full font-medium ${getButtonColorClass(slide.accentColor)} transition transform hover:scale-105 shadow-lg animate-slide-up`}
-                  style={{ animationDelay: '0.2s' }}
-                >
-                  {slide.buttonText}
-                </button>
+                <p className={`${getAccentColorClass(slide.accentColor)} text-sm font-medium tracking-wider mb-4 animate-fade-in`}>{slide.category}</p>
+                <h2 className="text-white text-5xl md:text-6xl font-serif leading-tight mb-6 animate-slide-up">{slide.title}</h2>
+                <p className="text-white/90 text-lg mb-8 leading-relaxed animate-slide-up" style={{ animationDelay: '0.1s' }}>{slide.description}</p>
+                <button className={`bg-white text-gray-900 px-8 py-3 rounded-full font-medium ${getButtonColorClass(slide.accentColor)} transition transform hover:scale-105 shadow-lg animate-slide-up`} style={{ animationDelay: '0.2s' }}>{slide.buttonText}</button>
               </div>
             </div>
           </div>
         ))}
 
-        {/* Navigation Arrows */}
-        <button
-          onClick={prevSlide}
-          className="absolute left-6 top-1/2 -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white p-3 rounded-full transition transform hover:scale-110"
-          aria-label="Previous slide"
-        >
+        <button onClick={prevSlide} className="absolute left-6 top-1/2 -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white p-3 rounded-full transition transform hover:scale-110">
           <ChevronLeft size={24} />
         </button>
-        <button
-          onClick={nextSlide}
-          className="absolute right-6 top-1/2 -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white p-3 rounded-full transition transform hover:scale-110"
-          aria-label="Next slide"
-        >
+        <button onClick={nextSlide} className="absolute right-6 top-1/2 -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white p-3 rounded-full transition transform hover:scale-110">
           <ChevronRight size={24} />
         </button>
 
-        {/* Dots Indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex space-x-3">
           {slides.map((_, index) => (
             <button
               key={index}
               onClick={() => setCurrentSlide(index)}
-              className={`transition-all duration-300 ${
-                index === currentSlide
-                  ? 'w-12 bg-white'
-                  : 'w-3 bg-white/50 hover:bg-white/70'
-              } h-3 rounded-full`}
-              aria-label={`Go to slide ${index + 1}`}
+              className={`transition-all duration-300 ${index === currentSlide ? 'w-12 bg-white' : 'w-3 bg-white/50 hover:bg-white/70'} h-3 rounded-full`}
             />
           ))}
-        </div>
-
-        {/* Decorative Coffee Steam Animation */}
-        <div className="absolute right-10 bottom-20 z-10 hidden lg:block">
-          <div className="relative w-32 h-32 opacity-20">
-            <div className="absolute inset-0 bg-white rounded-full animate-pulse"></div>
-          </div>
         </div>
       </div>
 
       <style jsx>{`
-        @keyframes fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slide-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.6s ease-out;
-        }
-        .animate-slide-up {
-          animation: slide-up 0.8s ease-out forwards;
-          opacity: 0;
-        }
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.6s ease-out; }
+        .animate-slide-up { animation: slide-up 0.8s ease-out forwards; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #ccc; }
       `}</style>
     </div>
   )

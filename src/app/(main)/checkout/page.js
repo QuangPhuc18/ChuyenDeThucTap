@@ -21,7 +21,7 @@ export default function CheckoutPage() {
   const [customers] = useState([
     {
       id: 1, name: 'Nguyễn Văn A', email: 'nguyenvana@example.com', phone: '0901234567',
-      address: '12 Nguyễn Trãi, Q.1, TP.HCM', note: 'Khách thích uống cà phê rang mộc.'
+      address: '12 Nguyễn Trãi, Q. 1, TP.HCM', note: 'Khách thích uống cà phê rang mộc.'
     },
     {
       id: 2, name: 'Trần Thị B', email: 'tranthib@example.com', phone: '0908888999',
@@ -34,7 +34,7 @@ export default function CheckoutPage() {
     email: '',
     phone: '',
     address: '',
-    note: '',
+    note:  '',
     paymentMethod: 'cod'
   });
 
@@ -64,7 +64,6 @@ export default function CheckoutPage() {
     return cartItems.reduce((sum, item) => sum + ((Number(item.price) || 0) * item.quantity), 0);
   };
 
-  // [SỬA ĐỔI] Luôn trả về 0 (Miễn phí vận chuyển)
   const calculateShipping = () => {
     return 0; 
   };
@@ -100,96 +99,166 @@ export default function CheckoutPage() {
 
   // --- [QUAN TRỌNG] XỬ LÝ ĐẶT HÀNG ---
   const handleSubmitOrder = async () => {
+    // 1. Validate Form cơ bản
     if (!formData.name || !formData.phone || !formData.address) {
       alert('Vui lòng điền đầy đủ thông tin bắt buộc (Tên, SĐT, Địa chỉ)!');
       return;
     }
 
     if (cartItems.length === 0) {
-        alert('Giỏ hàng trống!');
+      alert('Giỏ hàng trống!');
+      return;
+    }
+
+    if (formData.paymentMethod === 'vnpay' && !formData.email) {
+      alert('Vui lòng nhập email để thanh toán VNPay!');
+      return;
+    }
+
+    if (formData.paymentMethod === 'vnpay' && calculateTotal() < 10000) {
+      alert('Thanh toán VNPay yêu cầu tối thiểu 10.000đ!');
+      return;
+    }
+
+    // 2. [MỚI] KIỂM TRA ĐĂNG NHẬP
+    let userId = null;
+    if (typeof window !== 'undefined') {
+      const userStr = localStorage.getItem('user');
+      
+      // Nếu không tìm thấy thông tin user trong localStorage -> Chưa đăng nhập
+      if (!userStr) {
+        const confirmLogin = confirm("Bạn cần đăng nhập để thực hiện thanh toán. Đi đến trang đăng nhập ngay?");
+        if (confirmLogin) {
+          router.push('/auth/login'); // Chuyển hướng về trang login
+        }
+        return; // Dừng xử lý đặt hàng
+      }
+
+      try {
+        const user = JSON.parse(userStr);
+        userId = user.id;
+        
+        // Kiểm tra thêm nếu id không tồn tại
+        if (!userId) {
+            throw new Error("Invalid User ID");
+        }
+      } catch (e) {
+        // Data user bị lỗi hoặc không hợp lệ -> Xóa và bắt đăng nhập lại
+        localStorage.removeItem('user');
+        alert("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+        router.push('/auth/login');
         return;
+      }
     }
 
     setLoading(true);
 
     try {
-        // 1. Xử lý User ID
-        let userId = 1; 
-        if (typeof window !== 'undefined') {
-            const userStr = localStorage.getItem('user');
-            if (userStr) {
-                try {
-                    const user = JSON.parse(userStr);
-                    userId = user.id ? user.id : 1;
-                } catch (e) {
-                    userId = 1;
-                }
-            }
+      // 3. Chuẩn bị Payload
+      const payload = {
+        user_id: userId, // ID lấy từ localStorage đã được kiểm tra
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        note: formData.note,
+        payment_method:  formData.paymentMethod,
+        total_money: calculateTotal(),
+        
+        // Mapping chi tiết
+        details: cartItems.map(item => {
+          const sizeValue = item.size || item.option || '';
+          return {
+            product_id: item.id,
+            qty: item.quantity, 
+            price: item.price,
+            size: sizeValue,   
+            option: sizeValue,
+            discount: item.discount || 0  
+          };
+        })
+      };
+
+      console.log('📦 Order Payload:', payload);
+
+      // 4. Gọi API
+      const response = await OrderService.createOrder(payload);
+
+      console.log('📨 Order Response:', response);
+
+      // 5. Xử lý kết quả
+      if (response.status) {
+        // ✅ XỬ LÝ VNPAY
+        if (formData.paymentMethod === 'vnpay' && response.payUrl) {
+          console.log('🔗 Redirecting to VNPay:', response.payUrl);
+          localStorage.setItem('pending_order_id', response.orderId || '');
+          window.location.href = response.payUrl;
+          return;
         }
 
-        // 2. Chuẩn bị Payload
-        const payload = {
-            user_id: userId,
-            name: formData.name,
-            email: formData.email,
-            phone: formData.phone,
-            address: formData.address,
-            note: formData.note,
-            payment_method: formData.paymentMethod,
-            total_money: calculateTotal(),
-            
-            // 3. Mapping chi tiết (FIX SIZE VÀ QTY Ở ĐÂY)
-            details: cartItems.map(item => {
-                // Lấy size từ item (có thể là .size hoặc .option)
-                const sizeValue = item.size || item.option || '';
-                
-                return {
-                    product_id: item.id,
-                    qty: item.quantity, // Đổi quantity thành qty cho khớp backend
-                    price: item.price,
-                    // Gửi cả 2 trường để Backend bắt trường nào cũng được
-                    size: sizeValue,   
-                    option: sizeValue  
-                };
-            })
-        };
-
-        // 4. Gọi API
-        const response = await OrderService.createOrder(payload);
-
-        // 5. Xử lý kết quả
-        if (response.status) {
-            localStorage.removeItem('cart');
-            window.dispatchEvent(new Event('cart:update'));
-            alert('🎉 Đặt hàng thành công!');
-            
-            if (response.id || response.order_id) {
-               // Chuyển hướng về trang chủ hoặc chi tiết đơn hàng tùy ý
-               router.push('/');
-            } else {
-               router.push('/');
-            }
-        } else {
-            const errorDetails = response.errors 
-                ? Object.values(response.errors).flat().join('\n') 
-                : response.message;
-            alert('Lỗi đặt hàng:\n' + errorDetails);
+        // ✅ XỬ LÝ MOMO
+        if (formData.paymentMethod === 'momo' && response.payUrl) {
+          console.log('🔗 Redirecting to MoMo:', response.payUrl);
+          localStorage.setItem('pending_order_id', response.orderId || '');
+          window.location.href = response.payUrl;
+          return;
         }
+
+        // ✅ XỬ LÝ COD / BANK
+        localStorage.removeItem('cart');
+        localStorage.removeItem('pending_order_id');
+        window.dispatchEvent(new Event('cart:update'));
+
+        alert('🎉 Đặt hàng thành công!');
+        router.push('/');
+      } else {
+        const errorDetails = response.errors 
+          ? Object.values(response.errors).flat().join('\n') 
+          : response.message;
+        alert('Lỗi đặt hàng:\n' + errorDetails);
+      }
 
     } catch (error) {
-        console.error("Checkout Error:", error);
-        if (error.response && error.response.data && error.response.data.errors) {
-             const errorMsg = Object.values(error.response.data.errors).flat().join('\n');
-             alert('Vui lòng kiểm tra lại thông tin:\n' + errorMsg);
-        } else {
-             alert('Lỗi kết nối server hoặc hệ thống.');
-        }
+      console.error("Checkout Error:", error);
+      
+      // Xử lý lỗi 401 từ backend (nếu backend trả về 401 khi token hết hạn)
+      if (error.response && error.response.status === 401) {
+        alert("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        localStorage.removeItem('user'); // Xóa user cũ
+        localStorage.removeItem('token'); // Xóa token cũ nếu có
+        router.push('/login');
+        return;
+      }
+
+      if (error.response && error.response.data && error.response.data.errors) {
+        const errorMsg = Object.values(error.response.data.errors).flat().join('\n');
+        alert('Vui lòng kiểm tra lại thông tin:\n' + errorMsg);
+      } else if (error.response && error.response.data && error.response.data.message) {
+        alert('Lỗi:  ' + error.response.data.message);
+      } else {
+        alert('Lỗi kết nối server hoặc hệ thống.');
+      }
     } finally {
+      if (formData.paymentMethod !== 'momo' && formData.paymentMethod !== 'vnpay') {
         setLoading(false);
+      }
     }
   };
 
-  // --- RENDER UI (GIỮ NGUYÊN) ---
+  // --- Lấy text hiển thị trên nút ---
+  const getSubmitButtonText = () => {
+    if (loading) {
+      if (formData.paymentMethod === 'vnpay') return 'Đang chuyển VNPay...';
+      if (formData.paymentMethod === 'momo') return 'Đang chuyển MoMo...';
+      return 'Đang xử lý...';
+    }
+    
+    if (formData.paymentMethod === 'vnpay') return 'Thanh toán VNPay';
+    if (formData.paymentMethod === 'momo') return 'Thanh toán MoMo';
+    return 'Đặt hàng ngay';
+  };
+
+  // --- RENDER UI ---
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 py-8 px-4">
       <div className="max-w-7xl mx-auto">
@@ -222,7 +291,7 @@ export default function CheckoutPage() {
                     onClick={() => setShowCustomerList(!showCustomerList)}
                     className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all text-sm font-medium"
                   >
-                    {showCustomerList ? 'Ẩn danh sách' : 'Chọn từ danh sách'}
+                    {showCustomerList ?  'Ẩn danh sách' : 'Chọn từ danh sách'}
                   </button>
                 </div>
               </div>
@@ -322,7 +391,7 @@ export default function CheckoutPage() {
                 <div>
                   <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
                     <Mail className="w-4 h-4" />
-                    Email
+                    Email {formData.paymentMethod === 'vnpay' && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="email"
@@ -332,6 +401,9 @@ export default function CheckoutPage() {
                     placeholder="email@example.com"
                     className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                   />
+                  {formData.paymentMethod === 'vnpay' && !formData.email && (
+                    <p className="text-xs text-amber-600 mt-1">* Bắt buộc khi thanh toán VNPay</p>
+                  )}
                 </div>
 
                 <div>
@@ -375,7 +447,12 @@ export default function CheckoutPage() {
                 </div>
               </div>
               <div className="p-6 space-y-3">
-                <label className="flex items-center gap-4 p-4 border-2 border-slate-200 rounded-xl cursor-pointer hover:border-green-500 transition-all group">
+                {/* COD */}
+                <label className={`flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all group ${
+                  formData.paymentMethod === 'cod' 
+                    ? 'border-green-500 bg-green-50' 
+                    : 'border-slate-200 hover:border-green-500'
+                }`}>
                   <input
                     type="radio"
                     name="paymentMethod"
@@ -386,7 +463,7 @@ export default function CheckoutPage() {
                   />
                   <div className="flex-1">
                     <div className="font-semibold text-slate-800 group-hover:text-green-600 transition-colors">
-                      Thanh toán khi nhận hàng (COD)
+                      💵 Thanh toán khi nhận hàng (COD)
                     </div>
                     <div className="text-sm text-slate-500 mt-1">
                       Thanh toán bằng tiền mặt khi nhận hàng
@@ -394,7 +471,12 @@ export default function CheckoutPage() {
                   </div>
                 </label>
 
-                <label className="flex items-center gap-4 p-4 border-2 border-slate-200 rounded-xl cursor-pointer hover:border-green-500 transition-all group">
+                {/* Bank Transfer */}
+                <label className={`flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all group ${
+                  formData.paymentMethod === 'bank' 
+                    ? 'border-green-500 bg-green-50' 
+                    : 'border-slate-200 hover:border-green-500'
+                }`}>
                   <input
                     type="radio"
                     name="paymentMethod"
@@ -405,7 +487,7 @@ export default function CheckoutPage() {
                   />
                   <div className="flex-1">
                     <div className="font-semibold text-slate-800 group-hover:text-green-600 transition-colors">
-                      Chuyển khoản ngân hàng
+                      🏦 Chuyển khoản ngân hàng
                     </div>
                     <div className="text-sm text-slate-500 mt-1">
                       Chuyển khoản qua Internet Banking
@@ -413,24 +495,105 @@ export default function CheckoutPage() {
                   </div>
                 </label>
 
-                <label className="flex items-center gap-4 p-4 border-2 border-slate-200 rounded-xl cursor-pointer hover:border-green-500 transition-all group">
+                {/* ✅ VNPAY */}
+                <label className={`flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all group ${
+                  formData.paymentMethod === 'vnpay' 
+                    ? 'border-blue-500 bg-blue-50' 
+                    : 'border-slate-200 hover:border-blue-500'
+                }`}>
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="vnpay"
+                    checked={formData.paymentMethod === 'vnpay'}
+                    onChange={handleInputChange}
+                    className="w-5 h-5 text-blue-600"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
+                        💳 Thanh toán VNPay
+                      </span>
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        Khuyên dùng
+                      </span>
+                    </div>
+                    <div className="text-sm text-slate-500 mt-1">
+                      Thanh toán qua thẻ ATM, Visa, Mastercard, QR Code
+                    </div>
+                  </div>
+                  <img 
+                    src="https://cdn.haitrieu.com/wp-content/uploads/2022/10/Logo-VNPAY-QR-1.png" 
+                    alt="VNPay" 
+                    className="h-8 object-contain"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                </label>
+
+                {/* MoMo */}
+                <label className={`flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all group ${
+                  formData.paymentMethod === 'momo' 
+                    ? 'border-pink-500 bg-pink-50' 
+                    : 'border-slate-200 hover:border-pink-500'
+                }`}>
                   <input
                     type="radio"
                     name="paymentMethod"
                     value="momo"
                     checked={formData.paymentMethod === 'momo'}
                     onChange={handleInputChange}
-                    className="w-5 h-5 text-green-600"
+                    className="w-5 h-5 text-pink-600"
                   />
                   <div className="flex-1">
-                    <div className="font-semibold text-slate-800 group-hover:text-green-600 transition-colors">
-                      Ví MoMo
+                    <div className="font-semibold text-slate-800 group-hover:text-pink-600 transition-colors">
+                      📱 Ví MoMo
                     </div>
                     <div className="text-sm text-slate-500 mt-1">
                       Thanh toán qua ví điện tử MoMo
                     </div>
                   </div>
+                  <img 
+                    src="https://developers.momo.vn/v3/vi/assets/images/logo-momo-9f0c04710c71407c33c1b5e93db24485.png" 
+                    alt="MoMo" 
+                    className="h-8 object-contain"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
                 </label>
+
+                {/* Thông báo khi chọn VNPay */}
+                {formData.paymentMethod === 'vnpay' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-blue-800">
+                        <p className="font-semibold mb-1">Lưu ý khi thanh toán VNPay: </p>
+                        <ul className="list-disc ml-4 space-y-1 text-blue-700">
+                          <li>Bạn sẽ được chuyển đến cổng thanh toán VNPay</li>
+                          <li>Hỗ trợ thẻ ATM nội địa, Visa, Mastercard, JCB</li>
+                          <li>Quét mã QR qua ứng dụng ngân hàng</li>
+                          <li>Đơn hàng sẽ được xác nhận sau khi thanh toán thành công</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Thông báo khi chọn MoMo */}
+                {formData.paymentMethod === 'momo' && (
+                  <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 mt-4">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-pink-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-pink-800">
+                        <p className="font-semibold mb-1">Lưu ý khi thanh toán MoMo:</p>
+                        <ul className="list-disc ml-4 space-y-1 text-pink-700">
+                          <li>Bạn sẽ được chuyển đến cổng thanh toán MoMo</li>
+                          <li>Thanh toán qua ví MoMo hoặc thẻ liên kết</li>
+                          <li>Đơn hàng sẽ được xác nhận sau khi thanh toán thành công</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -453,21 +616,21 @@ export default function CheckoutPage() {
                   <div key={index} className="flex gap-4 pb-4 border-b border-slate-100 last:border-0">
                     <div className="w-16 h-16 bg-gradient-to-br from-slate-200 to-slate-300 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden">
                       {item.image ? (
-                          <img src={item.image} alt={item.name} className="w-full h-full object-cover"/>
+                        <img src={item.image} alt={item.name} className="w-full h-full object-cover"/>
                       ) : (
-                          <Package className="w-6 h-6 text-slate-400" />
+                        <Package className="w-6 h-6 text-slate-400" />
                       )}
                     </div>
                     <div className="flex-1">
                       <h3 className="font-medium text-slate-800 mb-1 line-clamp-1">{item.name}</h3>
                       <div className="flex items-center justify-between">
                         <div className="text-sm text-slate-500">
-                            SL: {item.quantity} 
-                            {(item.size || item.option) && (
-                                <span className="ml-1 px-1 bg-amber-100 text-amber-800 rounded text-xs">
-                                    {item.size || item.option}
-                                </span>
-                            )}
+                          SL: {item.quantity} 
+                          {(item.size || item.option) && (
+                            <span className="ml-1 px-1 bg-amber-100 text-amber-800 rounded text-xs">
+                              {item.size || item.option}
+                            </span>
+                          )}
                         </div>
                         <span className="font-semibold text-blue-600">{formatCurrency((Number(item.price) || 0) * item.quantity)}</span>
                       </div>
@@ -495,9 +658,17 @@ export default function CheckoutPage() {
                 <button
                   onClick={handleSubmitOrder}
                   disabled={loading}
-                  className={`w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 rounded-xl font-bold text-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 group ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  className={`w-full py-4 rounded-xl font-bold text-lg transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 group ${
+                    loading 
+                      ? 'bg-slate-400 cursor-not-allowed' 
+                      : formData.paymentMethod === 'vnpay'
+                        ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white'
+                        :  formData.paymentMethod === 'momo'
+                          ? 'bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white'
+                          : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white'
+                  }`}
                 >
-                  {loading ? 'Đang xử lý...' : 'Đặt hàng ngay'}
+                  {getSubmitButtonText()}
                   {!loading && <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
                 </button>
 

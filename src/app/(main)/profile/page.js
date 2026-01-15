@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Lock, ShoppingBag, Camera, LogOut } from 'lucide-react';
+import { User, Lock, ShoppingBag, Camera, LogOut, Package, Trash2, Edit2, Save, X, Minus, Plus } from 'lucide-react';
 import UserService from '@/services/UserService';
 
-const IMAGE_BASE_URL = 'http://127.0.0.1:8000/storage/';
+// --- CẤU HÌNH ---
+const API_BASE_URL = 'http://127.0.0.1:8000';
+
 const AVATAR_PLACEHOLDER =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
@@ -15,15 +17,46 @@ const AVATAR_PLACEHOLDER =
       '</svg>'
   );
 
-// Helpers để lấy items và tính tổng
+// --- HELPERS ---
+
+const getImageUrl = (product) => {
+  const path = product?.thumbnail || product?.image;
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  const cleanPath = path.replace(/^\//, '').replace(/^public\//, '').replace(/^storage\//, '');
+  return `${API_BASE_URL}/storage/${cleanPath}`;
+};
+
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency:  'VND' }).format(amount);
+};
+
 const getOrderItems = (order) =>
   order?.order_details || order?.details || order?.order_items || order?.items || [];
 
 const calcTotal = (order) => {
-  if (order?.total_amount != null) return Number(order.total_amount);
-  if (order?.total_money != null) return Number(order.total_money);
+  // Trường hợp 1: Có total_money/total_amount từ backend (khi không sửa)
+  if (order?.total_money != null && order.total_money > 0) {
+    return Number(order.total_money);
+  }
+  if (order?.total_amount != null && order.total_amount > 0) {
+    return Number(order.total_amount);
+  }
+
+  // Trường hợp 2: Tính từ items (dùng khi đang sửa hoặc fallback)
   const items = getOrderItems(order);
-  return items.reduce((sum, i) => sum + Number(i.price || 0) * Number(i.qty || 0), 0);
+  if (items.length === 0) return 0;
+
+  const total = items.reduce((sum, item) => {
+    // Nếu đang sửa, ưu tiên dùng qty trong editFormData, nếu không thì dùng data gốc
+    const price = Number(item.price || 0);
+    const qty = Number(item.qty || item.quantity || 1);
+    const discount = Number(item.discount || 0);
+    
+    return sum + (price * qty - discount);
+  }, 0);
+
+  return total;
 };
 
 const countItems = (order) => getOrderItems(order).length;
@@ -34,18 +67,21 @@ export default function ProfilePage() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
-  const [formData, setFormData] = useState({ name: '', email: '', phone: '', address: '', avatar: null });
-  const [passData, setPassData] = useState({ current_password: '', new_password: '', new_password_confirmation: '' });
+  
+  // State cho Form thông tin cá nhân
+  const [formData, setFormData] = useState({ name: '', email: '', phone:  '', address: '', avatar: null });
+  const [passData, setPassData] = useState({ current_password: '', new_password:  '', new_password_confirmation: '' });
   const [previewAvatar, setPreviewAvatar] = useState(null);
+
+  // State cho chức năng Sửa Đơn Hàng 
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editFormData, setEditFormData] = useState({ address: '', items: [] });
 
   const token = useMemo(() => (typeof window !== 'undefined' ? localStorage.getItem('authToken') : null), []);
 
   useEffect(() => {
     const init = async () => {
-      if (!token) {
-        router.push('/auth/login');
-        return;
-      }
+      if (! token) { router.push('/auth/login'); return; }
       setLoading(true);
       try {
         const profile = await UserService.getProfile();
@@ -58,24 +94,26 @@ export default function ProfilePage() {
             address: profile.data.address || '',
             avatar: null,
           });
-          const avtUrl = profile.data.avatar_url || (profile.data.avatar ? IMAGE_BASE_URL + profile.data.avatar : null);
+          
+          const path = profile.data.avatar;
+          const avtUrl = path ?  (path.startsWith('http') ? path : `${API_BASE_URL}/storage/${path.replace('public/', '')}`) : null;
           setPreviewAvatar(avtUrl || AVATAR_PLACEHOLDER);
-        } else {
-          throw new Error('No profile data');
-        }
+        } else { throw new Error('No profile data'); }
 
         const ordersRes = await UserService.getMyOrders();
-        if (ordersRes?.status) setOrders(ordersRes.data || []);
+        if (ordersRes?.status) {
+          const sortedOrders = (ordersRes.data || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          setOrders(sortedOrders);
+        }
       } catch (err) {
         console.error(err);
         router.push('/auth/login');
-      } finally {
-        setLoading(false);
-      }
+      } finally { setLoading(false); }
     };
     init();
   }, [router, token]);
 
+  // --- LOGIC CẬP NHẬT USER ---
   const handleUpdateInfo = async (e) => {
     e.preventDefault();
     try {
@@ -90,51 +128,24 @@ export default function ProfilePage() {
       if (res?.status) {
         alert('Cập nhật thông tin thành công!');
         if (typeof window !== 'undefined') localStorage.setItem('user', JSON.stringify(res.data));
-        const avtUrl = res.data.avatar_url || (res.data.avatar ? IMAGE_BASE_URL + res.data.avatar : null);
-        setPreviewAvatar(avtUrl || AVATAR_PLACEHOLDER);
-      } else {
-        alert(res?.message || 'Không thể cập nhật');
-      }
-    } catch (error) {
-      console.error(error);
-      alert('Lỗi cập nhật: ' + (error?.message || 'Vui lòng kiểm tra lại.'));
-    }
+        
+        const path = res.data.avatar;
+        const url = path ? (path.startsWith('http') ? path : `${API_BASE_URL}/storage/${path.replace('public/', '')}`) : null;
+        setPreviewAvatar(url || AVATAR_PLACEHOLDER);
+      } else { alert(res?.message || 'Không thể cập nhật'); }
+    } catch (error) { alert('Lỗi cập nhật'); }
   };
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    if (passData.new_password !== passData.new_password_confirmation) {
-      alert('Mật khẩu xác nhận không khớp');
-      return;
-    }
+    if (passData.new_password !== passData.new_password_confirmation) { alert('Mật khẩu xác nhận không khớp'); return; }
     try {
       const res = await UserService.changePassword(passData);
       if (res?.status) {
         alert('Đổi mật khẩu thành công!');
         setPassData({ current_password: '', new_password: '', new_password_confirmation: '' });
-      } else {
-        alert(res?.message || 'Đổi mật khẩu thất bại');
-      }
-    } catch (error) {
-      const msg = error?.errors ? Object.values(error.errors)[0][0] : error?.message;
-      alert('Lỗi: ' + msg);
-    }
-  };
-
-  const handleCancelOrder = async (orderId) => {
-    if (!confirm('Bạn chắc chắn muốn hủy đơn hàng này?')) return;
-    try {
-      const res = await UserService.cancelOrder(orderId);
-      if (res?.status) {
-        alert('Đã hủy đơn hàng');
-        const orderRes = await UserService.getMyOrders();
-        if (orderRes?.status) setOrders(orderRes.data || []);
-      } else {
-        alert(res?.message || 'Không thể hủy đơn hàng');
-      }
-    } catch (error) {
-      alert('Không thể hủy đơn hàng này.');
-    }
+      } else { alert(res?.message || 'Đổi mật khẩu thất bại'); }
+    } catch (error) { alert('Lỗi đổi mật khẩu'); }
   };
 
   const handleFileChange = (e) => {
@@ -151,12 +162,101 @@ export default function ProfilePage() {
     router.push('/auth/login');
   };
 
+  // --- LOGIC ĐƠN HÀNG (CANCEL & HIDE) ---
+  const handleCancelOrder = async (orderId) => {
+    if (!confirm('Bạn chắc chắn muốn hủy đơn hàng này? ')) return;
+    try {
+      const res = await UserService.cancelOrder(orderId);
+      if (res?.status) {
+        alert('Đã hủy đơn hàng');
+        // Refresh orders
+        const orderRes = await UserService.getMyOrders();
+        if (orderRes?.status) setOrders(orderRes.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+      } else { alert(res?.message || 'Không thể hủy đơn hàng'); }
+    } catch (error) { alert('Không thể hủy đơn hàng này. '); }
+  };
+
+  const handleHideOrder = (orderId) => {
+    if (confirm('Xóa đơn hàng này khỏi danh sách? (Dữ liệu vẫn lưu trong hệ thống)')) {
+      setOrders(prevOrders => prevOrders.filter(o => o.id !== orderId));
+    }
+  };
+
+  // --- LOGIC SỬA ĐƠN HÀNG (MỚI THÊM) ---
+  
+  // 1. Bắt đầu sửa
+  const handleStartEdit = (order) => {
+    setEditingOrderId(order.id);
+    const items = getOrderItems(order).map(item => ({
+      ...item,
+      qty: Number(item.qty || item.quantity || 1) // Chuẩn hóa qty
+    }));
+    setEditFormData({
+      address: order.address || user.address || '',
+      items: items
+    });
+  };
+
+  // 2. Hủy sửa
+  const handleCancelEdit = () => {
+    setEditingOrderId(null);
+    setEditFormData({ address: '', items: [] });
+  };
+
+  // 3. Thay đổi số lượng item
+  const handleQuantityChange = (index, change) => {
+    const newItems = [...editFormData.items];
+    const currentQty = newItems[index].qty;
+    const newQty = currentQty + change;
+
+    // Không cho phép giảm dưới 1
+    if (newQty < 1) return;
+
+    newItems[index].qty = newQty;
+    setEditFormData({ ...editFormData, items: newItems });
+  };
+
+  // 4. Lưu thay đổi (Gọi API)
+  const handleSaveOrder = async (orderId) => {
+    if (!confirm('Lưu thay đổi cho đơn hàng này?')) return;
+
+    try {
+      // Giả sử UserService có hàm updateOrder. Nếu chưa có, bạn cần thêm vào file UserService.js
+      // Cấu trúc API body thường là: { address: "...", items: [{product_id: 1, qty: 2}, ...] }
+      const payload = {
+        address: editFormData.address,
+        items: editFormData.items.map(i => ({
+          product_id: i.product_id,
+          qty: i.qty
+        }))
+      };
+
+      // Gọi API update (Bạn cần đảm bảo backend hỗ trợ route này)
+      // Ví dụ: Route::post('/my-orders/{id}/update', [OrderController::class, 'updateOrder']);
+      const res = await UserService.updateOrder(orderId, payload); 
+
+      if (res?.status) {
+        alert('Cập nhật đơn hàng thành công!');
+        setEditingOrderId(null);
+        // Refresh lại list
+        const orderRes = await UserService.getMyOrders();
+        if (orderRes?.status) setOrders(orderRes.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+      } else {
+        alert(res?.message || 'Cập nhật thất bại. Vui lòng thử lại.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi khi cập nhật đơn hàng. (Hãy đảm bảo UserService có hàm updateOrder)');
+    }
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50">Đang tải hồ sơ...</div>;
   if (!user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 pt-24 pb-12 px-4">
       <div className="container mx-auto max-w-5xl">
+        {/* Header Profile */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Hồ sơ thành viên</h1>
@@ -168,6 +268,8 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          
+          {/* SIDEBAR */}
           <div className="md:col-span-1">
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
               <div className="p-6 text-center border-b border-gray-100">
@@ -176,9 +278,7 @@ export default function ProfilePage() {
                     src={previewAvatar || AVATAR_PLACEHOLDER}
                     alt="Avatar"
                     className="w-full h-full rounded-full object-cover border-4 border-amber-100"
-                    onError={(e) => {
-                      e.currentTarget.src = AVATAR_PLACEHOLDER;
-                    }}
+                    onError={(e) => { e.currentTarget.src = AVATAR_PLACEHOLDER; }}
                   />
                   <label className="absolute bottom-0 right-0 bg-amber-600 text-white p-1.5 rounded-full cursor-pointer hover:bg-amber-700 transition">
                     <Camera size={14} />
@@ -190,16 +290,14 @@ export default function ProfilePage() {
               </div>
               <nav className="p-2">
                 {['info', 'orders', 'password'].map((tab) => {
-                  const icon =
-                    tab === 'info' ? <User size={18} /> : tab === 'orders' ? <ShoppingBag size={18} /> : <Lock size={18} />;
-                  const label =
-                    tab === 'info' ? 'Thông tin tài khoản' : tab === 'orders' ? 'Lịch sử đơn hàng' : 'Đổi mật khẩu';
+                  const icon = tab === 'info' ? <User size={18} /> : tab === 'orders' ? <ShoppingBag size={18} /> : <Lock size={18} />;
+                  const label = tab === 'info' ?  'Thông tin tài khoản' : tab === 'orders' ? 'Lịch sử đơn hàng' : 'Đổi mật khẩu';
                   return (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${
-                        activeTab === tab ? 'bg-amber-50 text-amber-700' : 'text-gray-600 hover:bg-gray-50'
+                        activeTab === tab ?  'bg-amber-50 text-amber-700' : 'text-gray-600 hover:bg-gray-50'
                       }`}
                     >
                       {icon} {label}
@@ -210,21 +308,18 @@ export default function ProfilePage() {
             </div>
           </div>
 
+          {/* MAIN CONTENT */}
           <div className="md:col-span-3">
             <div className="bg-white rounded-xl shadow-sm p-6 min-h-[400px] border border-gray-100">
+              
+              {/* TAB: INFO */}
               {activeTab === 'info' && (
                 <form onSubmit={handleUpdateInfo} className="space-y-4 max-w-lg">
                   <h2 className="text-xl font-bold mb-4">Cập nhật thông tin</h2>
                   {['name', 'email', 'phone', 'address'].map((field) => (
                     <div key={field}>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {field === 'name'
-                          ? 'Họ tên'
-                          : field === 'email'
-                          ? 'Email'
-                          : field === 'phone'
-                          ? 'Số điện thoại'
-                          : 'Địa chỉ'}
+                        {field === 'name' ?  'Họ tên' : field === 'email' ? 'Email' : field === 'phone' ? 'Số điện thoại' : 'Địa chỉ'}
                       </label>
                       <input
                         type={field === 'email' ? 'email' : 'text'}
@@ -242,6 +337,7 @@ export default function ProfilePage() {
                 </form>
               )}
 
+              {/* TAB: PASSWORD */}
               {activeTab === 'password' && (
                 <form onSubmit={handleChangePassword} className="space-y-4 max-w-lg">
                   <h2 className="text-xl font-bold mb-4">Đổi mật khẩu</h2>
@@ -267,56 +363,213 @@ export default function ProfilePage() {
                 </form>
               )}
 
+              {/* TAB: ORDERS */}
               {activeTab === 'orders' && (
                 <div>
-                  <h2 className="text-xl font-bold mb-4">Lịch sử đơn hàng</h2>
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold">Lịch sử đơn hàng</h2>
+                    <span className="text-sm text-gray-500">Tổng: {orders.length} đơn</span>
+                  </div>
+                  
                   {orders.length === 0 ? (
-                    <p className="text-gray-500">Bạn chưa có đơn hàng nào.</p>
+                    <div className="text-center py-12">
+                      <ShoppingBag size={48} className="mx-auto text-gray-300 mb-4" />
+                      <p className="text-gray-500">Bạn chưa có đơn hàng nào.</p>
+                    </div>
                   ) : (
                     <div className="space-y-4">
-                      {orders.map((order) => (
-                        <div key={order.id} className="border rounded-xl p-4 hover:border-amber-200 transition bg-gray-50">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <span className="font-bold text-gray-800">#{order.id}</span>
-                              <span className="text-sm text-gray-500 ml-2">
-                                {new Date(order.created_at).toLocaleDateString('vi-VN')}
+                      {orders.map((order) => {
+                        const isEditing = editingOrderId === order.id;
+                        // Nếu đang edit thì lấy items từ editFormData, ngược lại lấy từ order gốc
+                        const items = isEditing ? editFormData.items : getOrderItems(order);
+                        
+                        // Tính tổng tiền (nếu edit thì tính lại dựa trên items mới)
+                        const totalAmount = isEditing 
+                            ? items.reduce((sum, i) => sum + (Number(i.price) * Number(i.qty) - Number(i.discount||0)), 0)
+                            : calcTotal(order);
+
+                        return (
+                          <div key={order.id} className={`border rounded-xl p-4 transition bg-gray-50 group ${isEditing ? 'border-amber-400 ring-1 ring-amber-400 bg-white' : 'hover:border-amber-200'}`}>
+                            {/* Header Order */}
+                            <div className="flex justify-between items-start mb-3 border-b border-dashed border-gray-300 pb-2">
+                              <div>
+                                <span className="font-bold text-gray-800">Đơn hàng #{order.id}</span>
+                                <span className="text-sm text-gray-500 ml-2">
+                                  {new Date(order.created_at).toLocaleDateString('vi-VN', { 
+                                    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+                                  })}
+                                </span>
+                                
+                                {/* Hiển thị địa chỉ - Chế độ xem */}
+                                {!isEditing && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        📍 {order.address || 'Chưa cập nhật địa chỉ'}
+                                    </p>
+                                )}
+
+                                {/* Hiển thị địa chỉ - Chế độ sửa */}
+                                {isEditing && (
+                                    <div className="mt-2">
+                                        <label className="text-xs font-semibold text-gray-700 block mb-1">Địa chỉ nhận hàng:</label>
+                                        <input 
+                                            type="text" 
+                                            className="w-full text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-amber-500"
+                                            value={editFormData.address}
+                                            onChange={(e) => setEditFormData({...editFormData, address: e.target.value})}
+                                        />
+                                    </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {/* Nút Lưu / Hủy khi đang Sửa */}
+                                {isEditing ? (
+                                    <>
+                                        <button 
+                                            onClick={() => handleSaveOrder(order.id)}
+                                            className="flex items-center gap-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 transition"
+                                        >
+                                            <Save size={14} /> Lưu
+                                        </button>
+                                        <button 
+                                            onClick={handleCancelEdit}
+                                            className="flex items-center gap-1 text-xs bg-gray-200 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-300 transition"
+                                        >
+                                            <X size={14} /> Hủy
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Badge Trạng thái */}
+                                        <span className={`px-3 py-1 rounded-full text-xs font-medium 
+                                          ${order.status == 1 ? 'bg-yellow-100 text-yellow-700' 
+                                          : order.status == 0 ? 'bg-red-100 text-red-700' 
+                                          : 'bg-green-100 text-green-700'}`}
+                                        >
+                                          {order.status == 1 ? 'Chờ xác nhận' : order.status == 0 ? 'Đã hủy' : 'Hoàn thành'}
+                                        </span>
+                                        
+                                        {/* Các nút hành động khi chưa duyệt (status == 1) */}
+                                        {order.status == 1 && (
+                                          <>
+                                            {/* Nút Sửa */}
+                                            <button 
+                                                onClick={() => handleStartEdit(order)}
+                                                className="text-xs text-blue-600 hover:underline border border-blue-200 px-2 py-1 rounded bg-white hover:bg-blue-50 transition flex items-center gap-1"
+                                            >
+                                                <Edit2 size={12} /> Sửa
+                                            </button>
+
+                                            {/* Nút Hủy Đơn */}
+                                            <button 
+                                              onClick={() => handleCancelOrder(order.id)} 
+                                              className="text-xs text-red-600 hover:underline border border-red-200 px-2 py-1 rounded bg-white hover:bg-red-50 transition"
+                                            >
+                                              Hủy đơn
+                                            </button>
+                                          </>
+                                        )}
+
+                                        {/* Nút Xóa khỏi lịch sử (Local) */}
+                                        <button 
+                                          onClick={() => handleHideOrder(order.id)} 
+                                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                                          title="Xóa khỏi danh sách"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                    </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Chi tiết sản phẩm */}
+                            <div className="space-y-3 mb-3">
+                              {items.map((item, index) => {
+                                const product = item.product;
+                                const imageUrl = getImageUrl(product);
+                                const productName = product?.name || item.name || 'Sản phẩm';
+                                const itemPrice = Number(item.price || 0);
+                                const itemQty = Number(item.qty || item.quantity || 1);
+                                const itemSubtotal = itemPrice * itemQty;
+
+                                return (
+                                  <div key={index} className="flex gap-3 items-center">
+                                    {/* Ảnh */}
+                                    <div className="w-14 h-14 border border-gray-200 rounded-md overflow-hidden bg-white flex-shrink-0">
+                                      {imageUrl ? (
+                                        <img 
+                                          src={imageUrl} 
+                                          alt={productName} 
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
+                                        />
+                                      ) : null}
+                                      <div 
+                                        className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400" 
+                                        style={{display: imageUrl ? 'none' : 'flex'}}
+                                      >
+                                        <Package size={20}/>
+                                      </div>
+                                    </div>
+
+                                    {/* Thông tin */}
+                                    <div className="flex-1 min-w-0">
+                                      <h4 className="text-sm font-medium text-gray-800 line-clamp-2">{productName}</h4>
+                                      {item.size && <p className="text-xs text-gray-500 mt-0.5">Size: {item.size}</p>}
+                                      
+                                      <div className="flex justify-between items-center mt-1.5">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs text-gray-600">{formatCurrency(itemPrice)}</span>
+                                          
+                                          {/* Hiển thị số lượng: Chế độ Xem vs Sửa */}
+                                          {!isEditing ? (
+                                              <>
+                                                <span className="text-xs text-gray-400">×</span>
+                                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{itemQty}</span>
+                                              </>
+                                          ) : (
+                                              <div className="flex items-center ml-2 border border-gray-300 rounded bg-white">
+                                                  <button 
+                                                    type="button"
+                                                    onClick={() => handleQuantityChange(index, -1)}
+                                                    className="px-2 py-0.5 hover:bg-gray-100 text-gray-600"
+                                                  >
+                                                    <Minus size={10} />
+                                                  </button>
+                                                  <span className="px-2 text-xs font-semibold select-none">{itemQty}</span>
+                                                  <button 
+                                                    type="button"
+                                                    onClick={() => handleQuantityChange(index, 1)}
+                                                    className="px-2 py-0.5 hover:bg-gray-100 text-gray-600"
+                                                  >
+                                                    <Plus size={10} />
+                                                  </button>
+                                              </div>
+                                          )}
+                                        </div>
+                                        <span className="text-sm font-semibold text-gray-800">
+                                          {formatCurrency(itemSubtotal)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Footer Tổng tiền */}
+                            <div className="flex justify-between items-center border-t border-dashed border-gray-300 pt-3">
+                              <span className="text-sm text-gray-600">
+                                Tổng cộng ({items.length} sản phẩm):
+                              </span>
+                              <span className="font-bold text-amber-600 text-lg">
+                                {formatCurrency(totalAmount)}
                               </span>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span
-                                className={`px-3 py-1 rounded-full text-xs font-medium 
-                                ${
-                                  order.status == 1
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : order.status == 0
-                                    ? 'bg-red-100 text-red-700'
-                                    : 'bg-green-100 text-green-700'
-                                }`}
-                              >
-                                {order.status == 1 ? 'Chờ xác nhận' : order.status == 0 ? 'Đã hủy' : 'Thành công'}
-                              </span>
-                              {order.status == 1 && (
-                                <button
-                                  onClick={() => handleCancelOrder(order.id)}
-                                  className="text-xs text-red-600 hover:underline border border-red-200 px-2 py-1 rounded bg-white"
-                                >
-                                  Hủy đơn
-                                </button>
-                              )}
-                            </div>
                           </div>
-                          <div className="text-sm text-gray-600 mb-2">
-                            Tổng tiền:{' '}
-                            <span className="font-bold text-amber-600">
-                              {new Intl.NumberFormat('vi-VN').format(calcTotal(order))}đ
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-500 truncate">
-                            {countItems(order)} sản phẩm...
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

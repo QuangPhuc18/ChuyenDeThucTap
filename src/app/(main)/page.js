@@ -30,6 +30,10 @@ export default function HomePage() {
   const [bottomSectionIndex, setBottomSectionIndex] = useState(0);
   const [saleIndex, setSaleIndex] = useState(0);
 
+  // New: selected category for client-side filtering on homepage
+  // null means "all"
+  const [selectedCategory, setSelectedCategory] = useState(null);
+
   const formatPrice = (price) => {
     if (price == null) return '0';
     return new Intl.NumberFormat('vi-VN').format(Number(price));
@@ -38,65 +42,99 @@ export default function HomePage() {
   const getProductImage = (product) => {
     if (!product) return 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80';
     if (product.image_url) return product.image_url;
-    if (product.image && product.image.startsWith('http')) return product.image;
+    if (product.image && product.image.startsWith && product.image.startsWith('http')) return product.image;
     return 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80';
   };
 
+  // Fetch products; accepts optional category filter
+  const fetchProducts = async (categoryId = null) => {
+    try {
+      setLoading(true);
+      // Build params for the service; keep existing limit, add category if provided
+      const params = { limit: 20 };
+      if (categoryId != null) params.category_id = categoryId;
+
+      const normalRes = await ProductService.getList(params);
+      if (normalRes && normalRes.status) {
+        const productsData = Array.isArray(normalRes.data) ? normalRes.data : normalRes.data?.data || [];
+        setProducts(productsData);
+        // reset indices when products change
+        setTopSectionIndex(0);
+        setBottomSectionIndex(0);
+      } else {
+        setProducts([]);
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy danh sách sản phẩm:', error);
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch sales (one-time)
+  const fetchSales = async () => {
+    try {
+      const saleRes = await ProductSaleService.getActiveSales();
+      if (saleRes && saleRes.status) {
+        const rawData = saleRes.data || [];
+        if (Array.isArray(rawData)) {
+          const mappedSales = rawData.map((item) => ({
+            id: item.product_id,
+            uniqueKey: `sale-${item.sale_id}`,
+            name: item.name,
+            description: item.description || 'Ưu đãi có hạn trong ngày',
+            salePriceRaw: Number(item.salePrice),
+            originalPriceRaw: Number(item.price_buy || item.price),
+            price: formatPrice(item.salePrice),
+            oldPrice: formatPrice(item.price_buy || item.price),
+            discount: item.discount_percent ? `-${item.discount_percent}%` : '',
+            image: item.image_url || item.image,
+            badge: 'Flash Sale',
+          }));
+          setSaleProducts(mappedSales);
+        } else {
+          setSaleProducts([]);
+        }
+      } else {
+        setSaleProducts([]);
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy flash sale:', error);
+      setSaleProducts([]);
+    }
+  };
+
+  // Initial fetch: get all products and sales
   useEffect(() => {
-    const fetchData = async () => {
+    let mounted = true;
+    const init = async () => {
       try {
         setLoading(true);
-
-        const [normalRes, saleRes] = await Promise.all([
-          ProductService.getList({ limit: 20 }),
-          ProductSaleService.getActiveSales(),
-        ]);
-
-        // 1. Sản phẩm thường
-        if (normalRes && normalRes.status) {
-          const productsData = Array.isArray(normalRes.data) ? normalRes.data : normalRes.data.data || [];
-          setProducts(productsData);
-        }
-
-        // 2. Flash Sale
-        if (saleRes && saleRes.status) {
-          const rawData = saleRes.data || [];
-          if (Array.isArray(rawData)) {
-            const mappedSales = rawData.map((item) => ({
-              id: item.product_id,
-              uniqueKey: `sale-${item.sale_id}`,
-              name: item.name,
-              description: 'Ưu đãi có hạn trong ngày',
-              // Giá thô
-              salePriceRaw: Number(item.salePrice),
-              originalPriceRaw: Number(item.price_buy),
-              // Hiển thị
-              price: formatPrice(item.salePrice), // giá sale
-              oldPrice: formatPrice(item.price_buy), // giá gốc
-              discount: `-${item.discount_percent}%`,
-              image: item.image_url,
-              badge: 'Flash Sale',
-            }));
-            setSaleProducts(mappedSales);
-          }
-        }
-      } catch (error) {
-        console.error('Lỗi kết nối API:', error);
+        await Promise.all([fetchProducts(null), fetchSales()]);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
-
-    fetchData();
+    init();
+    return () => {
+      mounted = false;
+    };
   }, []);
+
+  // Re-fetch products when selectedCategory changes (client-side filter on homepage)
+  useEffect(() => {
+    // If selectedCategory is null, fetch all; otherwise fetch with category filter
+    fetchProducts(selectedCategory);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory]);
 
   // Card component
   const ProductCard = ({ product, isSale, isApi = false }) => {
     const name = product.name;
-    const desc = product.description;
+    const desc = product.description || product.short_description || '';
     const image = isApi ? getProductImage(product) : product.image;
 
-    // Nếu là sale: dùng salePriceRaw, originalPriceRaw. Nếu không: dùng price/price_buy
     const salePriceRaw = isApi && isSale ? product.salePriceRaw ?? product.price_buy ?? product.price : null;
     const originalPriceRaw = isApi && isSale ? product.originalPriceRaw ?? product.price : null;
 
@@ -121,12 +159,15 @@ export default function HomePage() {
       <div className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 h-full flex flex-col">
         <div className="relative overflow-hidden">
           <Link href={`/product/${product.id}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image}
               alt={name}
               className="w-full h-72 object-cover cursor-pointer transform group-hover:scale-110 transition-transform duration-500"
               onError={(e) => {
+                // @ts-ignore
                 e.target.onerror = null;
+                // @ts-ignore
                 e.target.src = 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80';
               }}
             />
@@ -183,12 +224,18 @@ export default function HomePage() {
     );
   };
 
-  // ====== Dưới đây giữ nguyên UI/logic cũ, chỉ thay ProductCard đã chỉnh ======
   const testimonials = [
     { id: 1, name: 'Johnsan Smith', role: 'Regular Customer', rating: 5, comment: 'The best coffee experience in town!', avatar: 'https://i.pravatar.cc/150?img=1' },
     { id: 2, name: 'Kristian Vial', role: 'Coffee Enthusiast', rating: 5, comment: 'Absolutely love their signature blends!', avatar: 'https://i.pravatar.cc/150?img=2' },
     { id: 3, name: 'Emma Thompson', role: 'Food Blogger', rating: 5, comment: 'A hidden gem for coffee lovers!', avatar: 'https://i.pravatar.cc/150?img=3' },
   ];
+
+  // Handler when clicking category UI: set selectedCategory so homepage products are filtered.
+  // We still keep the Link href so navigation to /product?category_id=... works.
+  const handleCategoryClick = (categoryId) => {
+    // Use null for "all"
+    setSelectedCategory(categoryId ?? null);
+  };
 
   return (
     <div className="bg-gradient-to-b from-gray-50 to-white">
@@ -196,30 +243,39 @@ export default function HomePage() {
       <div className="bg-white py-16 border-b border-gray-100">
         <div className="container mx-auto px-6 max-w-4xl">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="group text-center">
+            
+            {/* Cà phê - ID 1 */}
+            <Link href="/product?category_id=1" className="group text-center block" onClick={() => handleCategoryClick(1)}>
               <div className="w-24 h-24 mx-auto mb-4 bg-amber-50 rounded-full flex items-center justify-center group-hover:bg-amber-100 transition-all duration-300 group-hover:scale-110 cursor-pointer">
                 <Coffee className="w-12 h-12 text-amber-700" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 group-hover:text-amber-700 transition-colors">Cà phê</h3>
-            </div>
-            <div className="group text-center">
+            </Link>
+
+            {/* Freeze - ID 3 */}
+            <Link href="/product?category_id=3" className="group text-center block" onClick={() => handleCategoryClick(3)}>
               <div className="w-24 h-24 mx-auto mb-4 bg-blue-50 rounded-full flex items-center justify-center group-hover:bg-blue-100 transition-all duration-300 group-hover:scale-110 cursor-pointer">
                 <Snowflake className="w-12 h-12 text-blue-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Freeze</h3>
-            </div>
-            <div className="group text-center">
+            </Link>
+
+            {/* Trà - ID 2 */}
+            <Link href="/product?category_id=2" className="group text-center block" onClick={() => handleCategoryClick(2)}>
               <div className="w-24 h-24 mx-auto mb-4 bg-green-50 rounded-full flex items-center justify-center group-hover:bg-green-100 transition-all duration-300 group-hover:scale-110 cursor-pointer">
                 <Leaf className="w-12 h-12 text-green-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Trà</h3>
-            </div>
-            <div className="group text-center">
+            </Link>
+
+            {/* Bánh ngọt - ID 4 */}
+            <Link href="/product?category_id=4" className="group text-center block" onClick={() => handleCategoryClick(4)}>
               <div className="w-24 h-24 mx-auto mb-4 bg-pink-50 rounded-full flex items-center justify-center group-hover:bg-pink-100 transition-all duration-300 group-hover:scale-110 cursor-pointer">
                 <Cake className="w-12 h-12 text-pink-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 group-hover:text-pink-600 transition-colors">Bánh ngọt</h3>
-            </div>
+            </Link>
+
           </div>
         </div>
       </div>
@@ -403,6 +459,7 @@ export default function HomePage() {
           <div className="flex flex-col md:flex-row items-center gap-12">
             <div className="flex-1 relative group">
               <div className="absolute inset-0 bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl blur-2xl opacity-50 group-hover:opacity-75 transition-opacity"></div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=600&q=80"
                 alt="Coffee beans"
@@ -424,6 +481,7 @@ export default function HomePage() {
 
             <div className="flex-1 relative group">
               <div className="absolute inset-0 bg-gradient-to-r from-orange-500 to-amber-500 rounded-3xl blur-2xl opacity-50 group-hover:opacity-75 transition-opacity"></div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="https://images.unsplash.com/photo-1447933601403-0c6688de566e?w=600&q=80"
                 alt="Coffee beans scattered"
