@@ -2,20 +2,31 @@
 
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
-import { Search, ShoppingCart, ChevronLeft, ChevronRight, X, Loader2 } from 'lucide-react'
-import httpAxios from '@/services/httpAxios' 
+import { useRouter } from 'next/navigation'
+import { Search, ShoppingCart, ChevronLeft, ChevronRight, X, Loader2, User, LogOut, FileText } from 'lucide-react'
+import httpAxios from '@/services/httpAxios'
+import UserService from '@/services/UserService' // Đảm bảo import UserService
+
+// Placeholder avatar nếu user chưa có ảnh
+const AVATAR_PLACEHOLDER = "https://ui-avatars.com/api/?background=random&color=fff&name=";
 
 export default function CoffeeHeader() {
+  const router = useRouter();
+  
   // --- STATE CŨ (Giữ nguyên) ---
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [cartCount, setCartCount] = useState(0)
   const [currentSlide, setCurrentSlide] = useState(0)
 
-  // --- STATE MỚI CHO TÌM KIẾM ---
+  // --- STATE TÌM KIẾM (Giữ nguyên) ---
   const [keyword, setKeyword] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [loadingSearch, setLoadingSearch] = useState(false)
-  const searchTimeoutRef = useRef(null) 
+  const searchTimeoutRef = useRef(null)
+
+  // --- STATE USER (MỚI) ---
+  const [user, setUser] = useState(null)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
 
   // Dữ liệu Carousel (Giữ nguyên)
   const slides = [
@@ -73,6 +84,41 @@ export default function CoffeeHeader() {
     }, 5000)
     return () => clearInterval(timer)
   }, [slides.length])
+
+  // --- LOGIC USER (MỚI) ---
+  useEffect(() => {
+    const fetchUser = async () => {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            try {
+                // Lấy thông tin user từ localStorage nếu có (để hiển thị nhanh)
+                const cachedUser = localStorage.getItem('user');
+                if (cachedUser) setUser(JSON.parse(cachedUser));
+
+                // Gọi API lấy thông tin mới nhất
+                const res = await UserService.getProfile();
+                if (res && res.data) {
+                    setUser(res.data);
+                    localStorage.setItem('user', JSON.stringify(res.data));
+                }
+            } catch (error) {
+                console.error("Lỗi lấy thông tin user:", error);
+                // Nếu lỗi token hết hạn -> logout
+                if (error.response && error.response.status === 401) {
+                    handleLogout();
+                }
+            }
+        }
+    };
+    fetchUser();
+  }, []);
+
+  const handleLogout = async () => {
+      await UserService.logout();
+      setUser(null);
+      setIsUserMenuOpen(false);
+      router.push('/auth/login');
+  };
 
   // --- LOGIC TÌM KIẾM ---
   const handleSearchChange = (e) => {
@@ -133,6 +179,17 @@ export default function CoffeeHeader() {
       : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(numberAmount);
   }
 
+  // Xử lý avatar URL
+  const getAvatarUrl = (user) => {
+      if (!user) return null;
+      if (user.avatar) {
+          return user.avatar.startsWith('http') 
+            ? user.avatar 
+            : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000'}/storage/${user.avatar}`;
+      }
+      return AVATAR_PLACEHOLDER + encodeURIComponent(user.name);
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 relative">
       {/* Header */}
@@ -148,14 +205,14 @@ export default function CoffeeHeader() {
             <nav className="hidden md:flex items-center space-x-8">
               <a href="/" className="text-white text-sm font-medium hover:text-amber-200 transition">Trang chủ</a>
               <a href="/profile" className="text-white text-sm font-medium hover:text-amber-200 transition">Trang cá nhân</a>
-              <a href="posts" className="text-white text-sm font-medium hover:text-amber-200 transition">Bài viết</a>
+              <a href="/posts" className="text-white text-sm font-medium hover:text-amber-200 transition">Bài viết</a>
               <a href="/product" className="text-white text-sm font-medium hover:text-amber-200 transition">Cửa hàng</a>
               <a href="/Contact" className="text-white text-sm font-medium hover:text-amber-200 transition">Liên hệ</a>
-              <a href="/auth/login" className="text-white text-sm font-medium hover:text-amber-200 transition">Đăng nhập</a>
             </nav>
 
-            {/* Actions: Search + Cart */}
+            {/* Actions: Search + Cart + User */}
             <div className="flex items-center space-x-4">
+              {/* Search Icon */}
               <button
                 onClick={() => {
                     setIsSearchOpen(!isSearchOpen);
@@ -166,6 +223,7 @@ export default function CoffeeHeader() {
                 {isSearchOpen ? <X size={20} /> : <Search size={20} />}
               </button>
 
+              {/* Cart Icon */}
               <Link href="/cart" className="relative text-white hover:text-amber-200 transition p-2 rounded">
                 <ShoppingCart size={20} />
                 {cartCount > 0 && (
@@ -174,6 +232,64 @@ export default function CoffeeHeader() {
                   </span>
                 )}
               </Link>
+
+              {/* User Account Section (New) */}
+              {user ? (
+                  <div className="relative">
+                      <button 
+                        onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                        className="flex items-center gap-2 pl-2 border-l border-white/20 ml-2 focus:outline-none"
+                      >
+                          <img 
+                            src={getAvatarUrl(user)} 
+                            alt={user.name} 
+                            className="w-8 h-8 rounded-full object-cover border-2 border-amber-200/50"
+                          />
+                          <span className="text-white text-sm font-medium hidden lg:block truncate max-w-[100px]">
+                              {user.name}
+                          </span>
+                      </button>
+
+                      {/* User Dropdown Menu */}
+                      {isUserMenuOpen && (
+                          <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl py-2 animate-fade-in z-50">
+                              <div className="px-4 py-2 border-b border-gray-100">
+                                  <p className="text-sm font-bold text-gray-900 truncate">{user.name}</p>
+                                  <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                              </div>
+                              <Link href="/profile" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-amber-600">
+                                  <User size={16} /> Hồ sơ cá nhân
+                              </Link>
+                              <Link href="/my-orders" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-amber-600">
+                                  <FileText size={16} /> Đơn hàng của tôi
+                              </Link>
+                              <div className="border-t border-gray-100 mt-1"></div>
+                              <button 
+                                onClick={handleLogout}
+                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left"
+                              >
+                                  <LogOut size={16} /> Đăng xuất
+                              </button>
+                          </div>
+                      )}
+                      
+                      {/* Overlay để đóng menu khi click ra ngoài */}
+                      {isUserMenuOpen && (
+                          <div 
+                            className="fixed inset-0 z-40" 
+                            onClick={() => setIsUserMenuOpen(false)}
+                          ></div>
+                      )}
+                  </div>
+              ) : (
+                  // Nút Đăng nhập khi chưa có user
+                  <Link 
+                    href="/auth/login" 
+                    className="text-white text-sm font-medium hover:text-amber-200 transition border border-white/30 px-4 py-1.5 rounded-full hover:bg-white/10"
+                  >
+                    Đăng nhập
+                  </Link>
+              )}
             </div>
           </div>
 
@@ -230,33 +346,32 @@ export default function CoffeeHeader() {
                                             const displayPrice = product.price_buy;
 
                                             return (
-                                              <Link 
-                                                  key={product.id} 
-                                                  // 🔥 SỬA CHỖ NÀY: Dùng product.id thay vì product.slug
-                                                  href={`/product/${product.id}`} 
-                                                  className="flex items-center gap-4 hover:bg-gray-50 p-2 rounded-lg transition group"
-                                              >
-                                                  {/* Ảnh sản phẩm */}
-                                                  <div className="w-14 h-14 flex-shrink-0 bg-gray-100 rounded-md overflow-hidden border border-gray-200">
-                                                      {imageUrl ? (
-                                                          <img src={imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-300" />
-                                                      ) : (
-                                                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Img</div>
-                                                      )}
-                                                  </div>
-                                                  
-                                                  {/* Thông tin */}
-                                                  <div className="flex-1">
-                                                      <h4 className="text-sm font-medium text-gray-900 group-hover:text-amber-600 transition line-clamp-2">
-                                                          {product.name}
-                                                      </h4>
-                                                      <div className="flex items-center gap-2 mt-1">
-                                                          <span className="text-red-600 font-bold text-sm">
-                                                              {formatCurrency(displayPrice)}
-                                                          </span>
-                                                      </div>
-                                                  </div>
-                                              </Link>
+                                                <Link 
+                                                    key={product.id} 
+                                                    href={`/product/${product.id}`} 
+                                                    className="flex items-center gap-4 hover:bg-gray-50 p-2 rounded-lg transition group"
+                                                >
+                                                    {/* Ảnh sản phẩm */}
+                                                    <div className="w-14 h-14 flex-shrink-0 bg-gray-100 rounded-md overflow-hidden border border-gray-200">
+                                                        {imageUrl ? (
+                                                            <img src={imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-300" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Img</div>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* Thông tin */}
+                                                    <div className="flex-1">
+                                                        <h4 className="text-sm font-medium text-gray-900 group-hover:text-amber-600 transition line-clamp-2">
+                                                            {product.name}
+                                                        </h4>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-red-600 font-bold text-sm">
+                                                                {formatCurrency(displayPrice)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </Link>
                                             )
                                         })}
                                     </div>

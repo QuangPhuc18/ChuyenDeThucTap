@@ -11,13 +11,13 @@ export default function ProductActions({ product }) {
 
   // 1) Tìm size
   let sizeAttribute = product.grouped_attributes?.find((attr) => {
-    const name = attr.name ? attr.name.toLowerCase() : ''
+    const name = attr.name ? String(attr.name).toLowerCase() : ''
     return name.includes('size') || name.includes('kích thước') || name.includes('kich thuoc')
   })
   if (!sizeAttribute && product.grouped_attributes?.length > 0) {
     sizeAttribute = product.grouped_attributes[0]
   }
-  const availableSizes = sizeAttribute ? sizeAttribute.values : []
+  const availableSizes = sizeAttribute ? (Array.isArray(sizeAttribute.values) ? sizeAttribute.values : []) : []
   const [selectedSize, setSelectedSize] = useState(availableSizes.length > 0 ? availableSizes[0] : null)
 
   useEffect(() => {
@@ -26,15 +26,16 @@ export default function ProductActions({ product }) {
     }
   }, [availableSizes, selectedSize])
 
-  // 2) Giá cơ sở: ưu tiên giá sale
+  // 2) Giá cơ sở: ưu tiên giá sale (lưu ý: product.price có thể là chuỗi format, nên ưu tiên numeric props)
   const basePrice = Number(
     product.price_final ??
       product.salePrice ??
       product.sale_price ??
       product.price_sale ??
       product.price_discount ??
-      product.price ??
+      product.rawPrice ??
       product.price_buy ??
+      product.price ??
       0
   )
 
@@ -65,11 +66,12 @@ export default function ProductActions({ product }) {
 
     const cart = getCart()
     const idx = cart.findIndex((item) => item.id === product.id && item.size === selectedSize)
+    // lấy ảnh đầu tiên từ product.images nếu có
     const image =
       product.image ||
+      (Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null) ||
       product.image_url ||
       product.thumbnail ||
-      (Array.isArray(product.images) ? product.images[0]?.url || product.images[0]?.image : null) ||
       IMAGE_FALLBACK
 
     if (idx > -1) {
@@ -124,7 +126,7 @@ export default function ProductActions({ product }) {
           onClick={() => handleAddToCart(false)}
           className="flex-1 bg-gradient-to-r from-amber-600 to-orange-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:from-amber-700 hover:to-orange-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
         >
-          🛒 Thêm vào giỏ
+          🛒 Thêm vào giỏ 
         </button>
         <button
           onClick={() => handleAddToCart(true)}

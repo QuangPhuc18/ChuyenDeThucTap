@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Lock, ShoppingBag, Camera, LogOut, Package, Trash2, Edit2, Save, X, Minus, Plus } from 'lucide-react';
+import { User, Lock, ShoppingBag, Camera, LogOut, Package, Trash2, Edit2, Save, X, Minus, Plus, Search } from 'lucide-react';
 import UserService from '@/services/UserService';
 
 // --- CẤU HÌNH ---
@@ -35,7 +35,6 @@ const getOrderItems = (order) =>
   order?.order_details || order?.details || order?.order_items || order?.items || [];
 
 const calcTotal = (order) => {
-  // Trường hợp 1: Có total_money/total_amount từ backend (khi không sửa)
   if (order?.total_money != null && order.total_money > 0) {
     return Number(order.total_money);
   }
@@ -43,23 +42,18 @@ const calcTotal = (order) => {
     return Number(order.total_amount);
   }
 
-  // Trường hợp 2: Tính từ items (dùng khi đang sửa hoặc fallback)
   const items = getOrderItems(order);
   if (items.length === 0) return 0;
 
   const total = items.reduce((sum, item) => {
-    // Nếu đang sửa, ưu tiên dùng qty trong editFormData, nếu không thì dùng data gốc
     const price = Number(item.price || 0);
     const qty = Number(item.qty || item.quantity || 1);
     const discount = Number(item.discount || 0);
-    
     return sum + (price * qty - discount);
   }, 0);
 
   return total;
 };
-
-const countItems = (order) => getOrderItems(order).length;
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -76,6 +70,9 @@ export default function ProfilePage() {
   // State cho chức năng Sửa Đơn Hàng 
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [editFormData, setEditFormData] = useState({ address: '', items: [] });
+
+  // State MỚI cho chức năng Tìm kiếm Đơn hàng
+  const [orderSearchTerm, setOrderSearchTerm] = useState('');
 
   const token = useMemo(() => (typeof window !== 'undefined' ? localStorage.getItem('authToken') : null), []);
 
@@ -182,14 +179,12 @@ export default function ProfilePage() {
     }
   };
 
-  // --- LOGIC SỬA ĐƠN HÀNG (MỚI THÊM) ---
-  
-  // 1. Bắt đầu sửa
+  // --- LOGIC SỬA ĐƠN HÀNG ---
   const handleStartEdit = (order) => {
     setEditingOrderId(order.id);
     const items = getOrderItems(order).map(item => ({
       ...item,
-      qty: Number(item.qty || item.quantity || 1) // Chuẩn hóa qty
+      qty: Number(item.qty || item.quantity || 1)
     }));
     setEditFormData({
       address: order.address || user.address || '',
@@ -197,32 +192,23 @@ export default function ProfilePage() {
     });
   };
 
-  // 2. Hủy sửa
   const handleCancelEdit = () => {
     setEditingOrderId(null);
     setEditFormData({ address: '', items: [] });
   };
 
-  // 3. Thay đổi số lượng item
   const handleQuantityChange = (index, change) => {
     const newItems = [...editFormData.items];
     const currentQty = newItems[index].qty;
     const newQty = currentQty + change;
-
-    // Không cho phép giảm dưới 1
     if (newQty < 1) return;
-
     newItems[index].qty = newQty;
     setEditFormData({ ...editFormData, items: newItems });
   };
 
-  // 4. Lưu thay đổi (Gọi API)
   const handleSaveOrder = async (orderId) => {
     if (!confirm('Lưu thay đổi cho đơn hàng này?')) return;
-
     try {
-      // Giả sử UserService có hàm updateOrder. Nếu chưa có, bạn cần thêm vào file UserService.js
-      // Cấu trúc API body thường là: { address: "...", items: [{product_id: 1, qty: 2}, ...] }
       const payload = {
         address: editFormData.address,
         items: editFormData.items.map(i => ({
@@ -230,15 +216,10 @@ export default function ProfilePage() {
           qty: i.qty
         }))
       };
-
-      // Gọi API update (Bạn cần đảm bảo backend hỗ trợ route này)
-      // Ví dụ: Route::post('/my-orders/{id}/update', [OrderController::class, 'updateOrder']);
       const res = await UserService.updateOrder(orderId, payload); 
-
       if (res?.status) {
         alert('Cập nhật đơn hàng thành công!');
         setEditingOrderId(null);
-        // Refresh lại list
         const orderRes = await UserService.getMyOrders();
         if (orderRes?.status) setOrders(orderRes.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
       } else {
@@ -246,9 +227,28 @@ export default function ProfilePage() {
       }
     } catch (error) {
       console.error(error);
-      alert('Lỗi khi cập nhật đơn hàng. (Hãy đảm bảo UserService có hàm updateOrder)');
+      alert('Lỗi khi cập nhật đơn hàng.');
     }
   };
+
+  // --- LOGIC LỌC ĐƠN HÀNG (MỚI) ---
+  const filteredOrders = orders.filter(order => {
+      const term = orderSearchTerm.toLowerCase();
+      // Tìm theo ID
+      if (String(order.id).includes(term)) return true;
+      // Tìm theo tên sản phẩm
+      const items = getOrderItems(order);
+      const hasProduct = items.some(item => {
+          const pName = item.product?.name || item.name || '';
+          return pName.toLowerCase().includes(term);
+      });
+      if (hasProduct) return true;
+      // Tìm theo trạng thái
+      const statusText = order.status == 1 ? 'chờ xác nhận' : order.status == 0 ? 'đã hủy' : 'hoàn thành';
+      if (statusText.includes(term)) return true;
+
+      return false;
+  });
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50">Đang tải hồ sơ...</div>;
   if (!user) return null;
@@ -366,24 +366,50 @@ export default function ProfilePage() {
               {/* TAB: ORDERS */}
               {activeTab === 'orders' && (
                 <div>
-                  <div className="flex justify-between items-center mb-4">
+                  <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
                     <h2 className="text-xl font-bold">Lịch sử đơn hàng</h2>
-                    <span className="text-sm text-gray-500">Tổng: {orders.length} đơn</span>
+                    
+                    {/* INPUT TÌM KIẾM ĐƠN HÀNG (MỚI) */}
+                    <div className="relative w-full md:w-64">
+                        <input 
+                            type="text" 
+                            placeholder="Tìm theo ID, tên sp..." 
+                            value={orderSearchTerm}
+                            onChange={(e) => setOrderSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-200"
+                        />
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        {orderSearchTerm && (
+                            <button 
+                                onClick={() => setOrderSearchTerm('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
                   </div>
                   
-                  {orders.length === 0 ? (
+                  <div className="text-sm text-gray-500 mb-4">
+                      {filteredOrders.length === orders.length 
+                        ? `Tổng: ${orders.length} đơn` 
+                        : `Tìm thấy ${filteredOrders.length} đơn phù hợp`
+                      }
+                  </div>
+                  
+                  {filteredOrders.length === 0 ? (
                     <div className="text-center py-12">
                       <ShoppingBag size={48} className="mx-auto text-gray-300 mb-4" />
-                      <p className="text-gray-500">Bạn chưa có đơn hàng nào.</p>
+                      <p className="text-gray-500">
+                          {orderSearchTerm ? 'Không tìm thấy đơn hàng nào phù hợp.' : 'Bạn chưa có đơn hàng nào.'}
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {orders.map((order) => {
+                      {filteredOrders.map((order) => {
                         const isEditing = editingOrderId === order.id;
-                        // Nếu đang edit thì lấy items từ editFormData, ngược lại lấy từ order gốc
                         const items = isEditing ? editFormData.items : getOrderItems(order);
                         
-                        // Tính tổng tiền (nếu edit thì tính lại dựa trên items mới)
                         const totalAmount = isEditing 
                             ? items.reduce((sum, i) => sum + (Number(i.price) * Number(i.qty) - Number(i.discount||0)), 0)
                             : calcTotal(order);
@@ -400,14 +426,12 @@ export default function ProfilePage() {
                                   })}
                                 </span>
                                 
-                                {/* Hiển thị địa chỉ - Chế độ xem */}
                                 {!isEditing && (
                                     <p className="text-xs text-gray-500 mt-1">
                                         📍 {order.address || 'Chưa cập nhật địa chỉ'}
                                     </p>
                                 )}
 
-                                {/* Hiển thị địa chỉ - Chế độ sửa */}
                                 {isEditing && (
                                     <div className="mt-2">
                                         <label className="text-xs font-semibold text-gray-700 block mb-1">Địa chỉ nhận hàng:</label>
@@ -422,7 +446,6 @@ export default function ProfilePage() {
                               </div>
 
                               <div className="flex items-center gap-2">
-                                {/* Nút Lưu / Hủy khi đang Sửa */}
                                 {isEditing ? (
                                     <>
                                         <button 
@@ -440,7 +463,6 @@ export default function ProfilePage() {
                                     </>
                                 ) : (
                                     <>
-                                        {/* Badge Trạng thái */}
                                         <span className={`px-3 py-1 rounded-full text-xs font-medium 
                                           ${order.status == 1 ? 'bg-yellow-100 text-yellow-700' 
                                           : order.status == 0 ? 'bg-red-100 text-red-700' 
@@ -449,10 +471,8 @@ export default function ProfilePage() {
                                           {order.status == 1 ? 'Chờ xác nhận' : order.status == 0 ? 'Đã hủy' : 'Hoàn thành'}
                                         </span>
                                         
-                                        {/* Các nút hành động khi chưa duyệt (status == 1) */}
                                         {order.status == 1 && (
                                           <>
-                                            {/* Nút Sửa */}
                                             <button 
                                                 onClick={() => handleStartEdit(order)}
                                                 className="text-xs text-blue-600 hover:underline border border-blue-200 px-2 py-1 rounded bg-white hover:bg-blue-50 transition flex items-center gap-1"
@@ -460,7 +480,6 @@ export default function ProfilePage() {
                                                 <Edit2 size={12} /> Sửa
                                             </button>
 
-                                            {/* Nút Hủy Đơn */}
                                             <button 
                                               onClick={() => handleCancelOrder(order.id)} 
                                               className="text-xs text-red-600 hover:underline border border-red-200 px-2 py-1 rounded bg-white hover:bg-red-50 transition"
@@ -470,7 +489,6 @@ export default function ProfilePage() {
                                           </>
                                         )}
 
-                                        {/* Nút Xóa khỏi lịch sử (Local) */}
                                         <button 
                                           onClick={() => handleHideOrder(order.id)} 
                                           className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
@@ -495,7 +513,6 @@ export default function ProfilePage() {
 
                                 return (
                                   <div key={index} className="flex gap-3 items-center">
-                                    {/* Ảnh */}
                                     <div className="w-14 h-14 border border-gray-200 rounded-md overflow-hidden bg-white flex-shrink-0">
                                       {imageUrl ? (
                                         <img 
@@ -513,7 +530,6 @@ export default function ProfilePage() {
                                       </div>
                                     </div>
 
-                                    {/* Thông tin */}
                                     <div className="flex-1 min-w-0">
                                       <h4 className="text-sm font-medium text-gray-800 line-clamp-2">{productName}</h4>
                                       {item.size && <p className="text-xs text-gray-500 mt-0.5">Size: {item.size}</p>}
@@ -522,7 +538,6 @@ export default function ProfilePage() {
                                         <div className="flex items-center gap-2">
                                           <span className="text-xs text-gray-600">{formatCurrency(itemPrice)}</span>
                                           
-                                          {/* Hiển thị số lượng: Chế độ Xem vs Sửa */}
                                           {!isEditing ? (
                                               <>
                                                 <span className="text-xs text-gray-400">×</span>

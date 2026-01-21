@@ -21,6 +21,7 @@ const getCategoryName = (id) => {
 
 const buildImageUrl = (src) => {
   if (!src) return IMAGE_FALLBACK;
+  if (typeof src !== 'string') return IMAGE_FALLBACK;
   if (src.startsWith('http')) return src;
   return STORAGE_BASE + src.replace(/^\/+/, '');
 };
@@ -140,25 +141,47 @@ export default function ProductPage() {
         Math.round(((Number(originalPrice || 0) - Number(currentPrice || 0)) / Number(originalPrice || 1)) * 100)
       ));
 
-  // Sizes
+  // Sizes / grouped attributes (hỗ trợ formatted_attributes từ JSON mẫu)
   const groupedAttributes = Array.isArray(apiProduct?.grouped_attributes)
     ? apiProduct.grouped_attributes
+    : Array.isArray(apiProduct?.formatted_attributes)
+    ? apiProduct.formatted_attributes.map((a) => ({
+        name: a.attribute_name || a.name || '',
+        values: Array.isArray(a.values) ? a.values : [],
+      }))
     : Array.isArray(apiProduct?.product_attributes)
-    ? [{ attribute_id: '', values: apiProduct.product_attributes.map((v) => v.value || v) }]
+    ? [{ name: '', values: apiProduct.product_attributes.map((v) => v.value || v) }]
     : [];
 
-  // Gallery
+  // Gallery: gom tất cả nguồn ảnh, chuẩn hóa URL — hỗ trợ nhiều trường khác nhau từ backend
   const gallerySources = [];
-  if (apiProduct?.image_url) gallerySources.push(apiProduct.image_url);
+  // ưu tiên image_url (thường là full URL)
+  if (apiProduct?.image_url) gallerySources.push(buildImageUrl(apiProduct.image_url));
+  // thumbnail (có thể là path)
   if (apiProduct?.thumbnail) gallerySources.push(buildImageUrl(apiProduct.thumbnail));
-  const imgs = apiProduct?.images || apiProduct?.list_images || apiProduct?.gallery || [];
+  // trường gallery / images / list_images / gallery_images
+  const imgs = apiProduct?.images || apiProduct?.list_images || apiProduct?.gallery || apiProduct?.gallery_images || [];
   (Array.isArray(imgs) ? imgs : []).forEach((img) => {
-    if (typeof img === 'string') gallerySources.push(buildImageUrl(img));
-    else if (img?.url) gallerySources.push(img.url);
-    else if (img?.image) gallerySources.push(buildImageUrl(img.image));
+    if (!img) return;
+    if (typeof img === 'string') {
+      gallerySources.push(buildImageUrl(img));
+    } else if (img?.url) {
+      gallerySources.push(buildImageUrl(img.url));
+    } else if (img?.image) {
+      gallerySources.push(buildImageUrl(img.image));
+    } else if (img?.path) {
+      gallerySources.push(buildImageUrl(img.path));
+    }
   });
-  const mainImage = gallerySources[0] || IMAGE_FALLBACK;
-  const secondaryImage = gallerySources[1] || mainImage;
+  // Nếu product có trường image (đường dẫn ngắn)
+  if (apiProduct?.image) gallerySources.push(buildImageUrl(apiProduct.image));
+  // loại bỏ trùng lặp giữ thứ tự
+  const uniqueGallery = Array.from(new Set(gallerySources.filter(Boolean)));
+  // đảm bảo có ít nhất 1 ảnh
+  if (uniqueGallery.length === 0) uniqueGallery.push(IMAGE_FALLBACK);
+
+  const mainImage = uniqueGallery[0];
+  const secondaryImage = uniqueGallery[1] || mainImage;
 
   const product =
     apiProduct && {
@@ -177,7 +200,9 @@ export default function ProductPage() {
       reviews: 256,
       image: mainImage,
       secondaryImage,
+      images: uniqueGallery, // truyền mảng đầy đủ xuống ImageGallery
       category: getCategoryName(apiProduct.category_id),
+      price_buy: apiProduct.price_buy ?? apiProduct.price_buy,
     };
 
   const relatedProducts = (Array.isArray(relatedList) ? relatedList : Array.isArray(relatedList?.data) ? relatedList.data : [])
@@ -218,7 +243,7 @@ export default function ProductPage() {
 
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden mb-12 border border-amber-100">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 lg:p-10">
-            <ImageGallery mainImage={product.image} secondaryImage={product.secondaryImage} productName={product.name} />
+            <ImageGallery images={product.images} productName={product.name} />
 
             <div className="flex flex-col">
               <div className="inline-flex items-center gap-2 mb-4 flex-wrap">

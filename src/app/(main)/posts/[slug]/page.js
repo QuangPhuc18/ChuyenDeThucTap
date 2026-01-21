@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation'; // Thêm useRouter để redirect nếu cần
+import { useParams, useRouter } from 'next/navigation';
 import PostService from '@/services/PostService';
 import Link from 'next/link';
-import { Calendar, User, ArrowLeft, Share2, Loader2, Tag, AlertCircle } from 'lucide-react';
+import { Calendar, User, ArrowLeft, Share2, Loader2, Tag, AlertCircle, Clock } from 'lucide-react';
 
 export default function PostDetailPage() {
   const params = useParams();
@@ -16,6 +16,7 @@ export default function PostDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // --- 1. Fetch Data ---
   useEffect(() => {
     if (!slug) return;
     fetchPost();
@@ -25,22 +26,16 @@ export default function PostDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      console.log('Fetching slug:', slug);
-      
-      // 👇 SỬA QUAN TRỌNG: Dùng getDetail thay vì getById
+      // Gọi API lấy chi tiết
       const res = await PostService.getDetail(slug);
-      
-      console.log('API Response:', res);
 
       if (res && res.status === true && res.data) {
         setPost(res.data);
-        
-        // Sau khi có post, lấy bài viết liên quan
+        // Lấy bài liên quan nếu có topic_id
         if (res.data.topic_id) {
           fetchRelatedPosts(res.data.topic_id, res.data.id);
         }
       } else {
-        console.error('Lỗi API:', res);
         setError(res?.message || 'Không tìm thấy bài viết');
         setPost(null);
       }
@@ -55,9 +50,7 @@ export default function PostDetailPage() {
 
   const fetchRelatedPosts = async (topicId, currentId) => {
     try {
-      // Gọi API lấy bài liên quan (đã định nghĩa trong PostService trước đó)
       const res = await PostService.getRelated(topicId, currentId);
-
       if (res && res.status && res.data) {
         setRelatedPosts(res.data);
       }
@@ -66,16 +59,15 @@ export default function PostDetailPage() {
     }
   };
 
+  // Helper format ngày
   const formatDate = (dateString) => {
     if (!dateString) return '';
     return new Date(dateString).toLocaleDateString('vi-VN', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric'
+      day: '2-digit', month: 'long', year: 'numeric'
     });
   };
 
-  // --- GIAO DIỆN LOADING ---
+  // --- 2. Loading State ---
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white">
@@ -85,7 +77,7 @@ export default function PostDetailPage() {
     );
   }
 
-  // --- GIAO DIỆN LỖI / KHÔNG TÌM THẤY ---
+  // --- 3. Error State ---
   if (error || !post) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center bg-white px-4 text-center">
@@ -93,124 +85,138 @@ export default function PostDetailPage() {
             <AlertCircle className="w-16 h-16 text-red-500" />
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Rất tiếc!</h2>
-        <p className="text-gray-500 mb-8 max-w-md">{error || 'Bài viết bạn tìm kiếm không tồn tại hoặc đã bị xóa.'}</p>
-        <Link
-          href="/posts"
-          className="inline-flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition font-medium shadow-lg shadow-blue-200"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Quay lại trang tin tức
+        <p className="text-gray-500 mb-8 max-w-md">{error || 'Bài viết không tồn tại.'}</p>
+        <Link href="/posts" className="inline-flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition font-medium shadow-lg shadow-blue-200">
+          <ArrowLeft className="w-5 h-5" /> Quay lại trang tin tức
         </Link>
       </div>
     );
   }
 
-  // --- GIAO DIỆN CHI TIẾT BÀI VIẾT ---
+  // --- 4. Main Content ---
   return (
     <div className="min-h-screen bg-white font-sans text-gray-800 pb-20">
       
-      {/* 1. HEADER (Title, Meta) */}
-      <div className="bg-gradient-to-b from-gray-50 to-white pt-10 pb-8">
-        <div className="max-w-4xl mx-auto px-4">
-          {/* Breadcrumb */}
-          <Link
-            href="/posts"
-            className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-blue-600 mb-8 transition-colors group"
-          >
-            <div className="p-1.5 bg-white border border-gray-200 rounded-full group-hover:border-blue-600 transition-colors">
-               <ArrowLeft className="w-4 h-4" />
-            </div>
-            Quay lại danh sách
-          </Link>
-
-          {/* Title */}
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-gray-900 leading-tight mb-6">
-            {post.title}
-          </h1>
-
-          {/* Description (Sapo) */}
-          {post.description && (
-            <p className="text-lg md:text-xl text-gray-600 mb-8 leading-relaxed font-light">
-              {post.description}
-            </p>
-          )}
-
-          {/* Author & Meta */}
-          <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500 border-t border-gray-200 pt-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold border border-blue-200">
-                <User className="w-5 h-5" />
+      {/* === HERO SECTION (Ảnh Trái - Chữ Phải) === */}
+      <div className="bg-gray-50/50 border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4 py-12 md:py-16">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+            
+            {/* Cột Trái: Ảnh Đại Diện */}
+            <div className="order-2 lg:order-1 relative group">
+              <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-black/5 bg-gray-200 relative z-10">
+                {post.image_url ? (
+                  <img
+                    src={post.image_url}
+                    alt={post.title}
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400">No Image</div>
+                )}
               </div>
-              <div>
-                  <p className="font-bold text-gray-900">Admin</p>
-                  <p className="text-xs">Tác giả</p>
-              </div>
+              {/* Decorative elements */}
+              <div className="absolute -bottom-4 -right-4 w-full h-full bg-blue-100 rounded-2xl -z-0 lg:block hidden"></div>
             </div>
-            <div className="h-8 w-[1px] bg-gray-200 hidden sm:block"></div>
+
+            {/* Cột Phải: Thông tin bài viết */}
+            <div className="order-1 lg:order-2 flex flex-col justify-center h-full">
+              {/* Breadcrumb */}
+              <Link href="/posts" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 mb-6 hover:underline w-fit">
+                <ArrowLeft className="w-4 h-4" /> Quay lại danh sách
+              </Link>
+
+              {/* Title */}
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-gray-900 leading-tight mb-6">
+                {post.title}
+              </h1>
+
+              {/* Meta Data */}
+              <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500 mb-8">
+                <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg text-blue-700 font-medium">
+                  <User className="w-4 h-4" />
+                  <span>Admin</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  <span>{formatDate(post.created_at)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  <span>5 phút đọc</span>
+                </div>
+              </div>
+
+              {/* Sapo / Mô tả ngắn */}
+              {post.description && (
+                <div className="pl-4 border-l-4 border-blue-500">
+                  <p className="text-lg md:text-xl text-gray-600 leading-relaxed italic">
+                    "{post.description}"
+                  </p>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      {/* === CONTENT SECTION === */}
+      <div className="max-w-4xl mx-auto px-4 mt-12 md:mt-16">
+        
+        {/* Nội dung HTML */}
+        <article className="prose prose-lg prose-blue max-w-none text-gray-700 leading-8 prose-headings:font-bold prose-headings:text-gray-900 prose-img:rounded-xl prose-img:shadow-lg prose-a:text-blue-600">
+          <div dangerouslySetInnerHTML={{ __html: post.content || '' }} />
+        </article>
+
+        {/* Footer bài viết: Tags & Share */}
+        <div className="mt-16 pt-8 border-t border-gray-100">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-gray-400" />
-              <span>{formatDate(post.created_at)}</span>
+               <div className="p-2 bg-gray-100 rounded-full text-gray-500">
+                 <Tag className="w-5 h-5"/>
+               </div>
+               <div className="flex gap-2">
+                 <span className="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded-full font-medium">Tin tức</span>
+                 <span className="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded-full font-medium">Coffea</span>
+               </div>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* 2. FEATURED IMAGE */}
-      {post.image_url && (
-        <div className="max-w-5xl mx-auto px-4 mb-12">
-          <div className="aspect-video md:aspect-[21/9] rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5 bg-gray-100">
-            <img
-              src={post.image_url}
-              alt={post.title}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                  e.target.style.display = 'none'; // Ẩn nếu lỗi ảnh
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href);
+                alert('Đã sao chép liên kết bài viết!');
               }}
-            />
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition font-medium shadow-md shadow-blue-200"
+            >
+              <Share2 className="w-4 h-4" />
+              Chia sẻ bài viết
+            </button>
           </div>
-        </div>
-      )}
-
-      {/* 3. MAIN CONTENT */}
-      <div className="max-w-3xl mx-auto px-4">
-        <article
-          className="prose prose-lg prose-blue max-w-none text-gray-700 leading-relaxed prose-img:rounded-xl prose-img:shadow-md"
-          dangerouslySetInnerHTML={{ __html: post.content || '' }}
-        />
-
-        {/* Footer bài viết */}
-        <div className="mt-16 pt-8 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-             <Tag className="w-5 h-5 text-gray-400"/>
-             <span className="text-sm text-gray-500 font-medium">Tin tức, Sự kiện</span>
-          </div>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(window.location.href);
-              alert('Đã sao chép liên kết bài viết!');
-            }}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-full hover:bg-blue-50 hover:text-blue-600 transition font-medium"
-          >
-            <Share2 className="w-4 h-4" />
-            Chia sẻ bài viết
-          </button>
         </div>
       </div>
 
-      {/* 4. RELATED POSTS */}
+      {/* === RELATED POSTS === */}
       {relatedPosts.length > 0 && (
-        <div className="bg-gray-50 py-16 mt-20 border-t border-gray-100">
-          <div className="max-w-6xl mx-auto px-4">
-            <h3 className="text-2xl font-bold text-gray-900 mb-8 flex items-center gap-3">
-                <span className="w-1.5 h-8 bg-blue-600 rounded-full"></span>
+        <div className="bg-gray-50 py-16 mt-20 border-t border-gray-200">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex items-center justify-between mb-10">
+              <h3 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3">
+                <span className="w-2 h-8 bg-blue-600 rounded-full"></span>
                 Bài viết liên quan
-            </h3>
+              </h3>
+              <Link href="/posts" className="text-blue-600 font-medium hover:underline flex items-center gap-1">
+                Xem tất cả <ArrowLeft className="w-4 h-4 rotate-180" />
+              </Link>
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {relatedPosts.map((item) => (
                 <Link
                   key={item.id}
                   href={`/posts/${item.slug || item.id}`}
-                  className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                  className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-2 flex flex-col h-full"
                 >
                   <div className="aspect-[16/10] overflow-hidden bg-gray-200 relative">
                     <img
@@ -218,13 +224,14 @@ export default function PostDetailPage() {
                       alt={item.title}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     />
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
                   </div>
-                  <div className="p-5">
-                    <div className="text-xs font-bold text-blue-600 mb-2 uppercase tracking-wider">News</div>
-                    <h4 className="font-bold text-gray-900 text-lg line-clamp-2 group-hover:text-blue-600 transition-colors mb-2">
+                  <div className="p-6 flex flex-col flex-1">
+                    <div className="text-xs font-bold text-blue-600 mb-2 uppercase tracking-wide">News</div>
+                    <h4 className="font-bold text-gray-900 text-lg line-clamp-2 group-hover:text-blue-600 transition-colors mb-3">
                       {item.title}
                     </h4>
-                    <p className="text-xs text-gray-400 flex items-center gap-1">
+                    <p className="text-xs text-gray-400 flex items-center gap-1 mt-auto">
                         <Calendar className="w-3 h-3"/> {formatDate(item.created_at)}
                     </p>
                   </div>

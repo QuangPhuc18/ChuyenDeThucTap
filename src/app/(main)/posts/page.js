@@ -3,34 +3,40 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import PostService from '@/services/PostService';
+import TopicService from '@/services/TopicService'; // ✅ Import TopicService
 import { Search, Loader2, FilterX, User } from 'lucide-react';
 
 export default function BlogPage() {
   const [posts, setPosts] = useState([]);
-  const [topics, setTopics] = useState([]);
+  const [topics, setTopics] = useState([]); // State lưu danh sách chủ đề
   const [loading, setLoading] = useState(true);
   const [selectedTopic, setSelectedTopic] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Khởi tạo Topics
+  // 1. Lấy danh sách Chủ đề (Topics) từ API khi trang load
   useEffect(() => {
-    setTopics([
-      { id: 1, name: 'Công nghệ' },
-      { id: 2, name: 'Du lịch' },
-      { id: 3, name: 'Ẩm thực' },
-      { id: 4, name: 'Đời sống' },
-      { id: 5, name: 'Sự kiện' },
-    ]);
+    const fetchTopics = async () => {
+      try {
+        const res = await TopicService.getAllActive(); // Gọi API lấy topic active
+        if (res && res.status) {
+          setTopics(res.data || []);
+        }
+      } catch (error) {
+        console.error("Lỗi tải topics:", error);
+      }
+    };
+    fetchTopics();
   }, []);
 
-  // Gọi API lấy bài viết
+  // 2. Gọi API lấy bài viết (khi filter thay đổi)
   useEffect(() => {
     const fetchPosts = async () => {
       setLoading(true);
       try {
         const params = {
           limit: 10,
-          status: 1
+          status: 1, // Chỉ lấy bài viết đang hiện
+          post_type: 'post' // Chỉ lấy bài viết tin tức
         };
 
         if (selectedTopic !== 'all') {
@@ -43,21 +49,23 @@ export default function BlogPage() {
 
         const res = await PostService.getList(params);
 
-        // Kiểm tra data trả về từ API (đã sửa trong PostService)
         if (res && res.status) {
-          setPosts(res.data || []);
+          // Xử lý data trả về (hỗ trợ cả dạng phân trang hoặc mảng)
+          const data = Array.isArray(res.data) ? res.data : res.data.data;
+          setPosts(data || []);
         } else {
           setPosts([]);
         }
       } catch (error) {
-        console.error(error);
+        console.error("Lỗi tải bài viết:", error);
         setPosts([]);
       } finally {
         setLoading(false);
       }
     };
 
-    const timeoutId = setTimeout(fetchPosts, 300);
+    // Debounce tìm kiếm (chờ người dùng gõ xong mới gọi API)
+    const timeoutId = setTimeout(fetchPosts, 500);
     return () => clearTimeout(timeoutId);
   }, [selectedTopic, searchTerm]);
 
@@ -84,31 +92,34 @@ export default function BlogPage() {
 
   return (
     <div className="bg-gray-50 min-h-screen">
+      
       {/* --- Filter Bar --- */}
-      <div className="bg-white border-b sticky top-0 z-20 shadow-sm">
+      <div className="bg-white border-b sticky top-0 z-20 shadow-sm transition-all">
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             
-            {/* Topics */}
+            {/* Topics Scrollable List */}
             <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide">
               <button
                 onClick={() => setSelectedTopic('all')}
-                className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                className={`whitespace-nowrap px-5 py-2 rounded-full text-sm font-bold transition-all shadow-sm ${
                   selectedTopic === 'all'
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-gray-900 text-white ring-2 ring-gray-900 ring-offset-2'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'
                 }`}
               >
                 Tất cả
               </button>
+              
+              {/* Render Topics động từ API */}
               {topics.map((topic) => (
                 <button
                   key={topic.id}
                   onClick={() => setSelectedTopic(topic.id)}
-                  className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  className={`whitespace-nowrap px-5 py-2 rounded-full text-sm font-medium transition-all shadow-sm ${
                     selectedTopic === topic.id
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? 'bg-gray-900 text-white ring-2 ring-gray-900 ring-offset-2'
+                      : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'
                   }`}
                 >
                   {topic.name}
@@ -116,16 +127,16 @@ export default function BlogPage() {
               ))}
             </div>
 
-            {/* Search */}
-            <div className="relative w-full md:w-64">
+            {/* Search Input */}
+            <div className="relative w-full md:w-72 group">
               <input
                 type="text"
                 placeholder="Tìm kiếm bài viết..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-gray-100 border-0 rounded-full text-sm focus:ring-2 focus:ring-gray-300 outline-none transition-all"
+                className="w-full pl-11 pr-4 py-2.5 bg-gray-100 border-transparent border-2 rounded-full text-sm focus:bg-white focus:border-blue-500 focus:ring-0 outline-none transition-all placeholder-gray-400 group-hover:bg-white group-hover:border-gray-200"
               />
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
             </div>
           </div>
         </div>
@@ -133,92 +144,110 @@ export default function BlogPage() {
 
       {/* --- Main Content --- */}
       <div className="max-w-6xl mx-auto px-4 py-10">
+        
+        {/* Loading State */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-10 h-10 text-gray-400 animate-spin" />
+          <div className="flex items-center justify-center py-20 min-h-[400px]">
+            <div className="text-center">
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">Đang tải nội dung...</p>
+            </div>
           </div>
         ) : posts.length === 0 ? (
-          <div className="text-center py-20">
-            <FilterX className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 mb-4 text-lg">Không tìm thấy bài viết nào</p>
+          
+          /* Empty State */
+          <div className="text-center py-20 min-h-[400px] flex flex-col items-center justify-center">
+            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+                <FilterX className="w-10 h-10 text-gray-400" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Không tìm thấy bài viết nào</h3>
+            <p className="text-gray-500 mb-6 max-w-md mx-auto">
+                Chúng tôi không tìm thấy kết quả phù hợp với từ khóa hoặc chủ đề bạn chọn.
+            </p>
             <button
               onClick={resetFilters}
-              className="px-6 py-2 bg-gray-900 text-white text-sm rounded-full hover:bg-gray-800 transition"
+              className="px-8 py-2.5 bg-blue-600 text-white font-medium rounded-full hover:bg-blue-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
-              Xóa bộ lọc
+              Xem tất cả bài viết
             </button>
           </div>
+
         ) : isFiltering ? (
+          
           /* --- VIEW KHI ĐANG LỌC (GRID) --- */
-          <div>
-            <div className="flex items-center justify-between mb-6">
+          <div className="animate-fade-in-up">
+            <div className="flex items-center justify-between mb-8 pb-4 border-b border-gray-200">
               <p className="text-gray-600">
-                Tìm thấy <span className="font-semibold text-gray-900">{posts.length}</span> bài viết
+                Tìm thấy <span className="font-bold text-gray-900 text-lg mx-1">{posts.length}</span> kết quả
+                {searchTerm && <span> cho từ khóa "<span className="text-blue-600">{searchTerm}</span>"</span>}
               </p>
               <button
                 onClick={resetFilters}
-                className="text-sm text-gray-500 hover:text-gray-900 underline"
+                className="text-sm text-red-500 font-medium hover:text-red-700 hover:underline flex items-center gap-1"
               >
-                Xóa bộ lọc
+                <FilterX className="w-4 h-4" /> Xóa bộ lọc
               </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {posts.map((post) => (
                 <PostCard key={post.id} post={post} formatDate={formatDate} />
               ))}
             </div>
           </div>
+
         ) : (
+          
           /* --- VIEW MẶC ĐỊNH (MAGAZINE LAYOUT) --- */
-          <div className="space-y-16">
+          <div className="space-y-20 animate-fade-in">
             
             {/* 1. POPULAR POST SECTION */}
             <section>
-              <SectionHeader title="Popular Post" subtitle="Bài viết được yêu thích nhất" />
+              <SectionHeader title="Nổi Bật" subtitle="Những câu chuyện được quan tâm nhất" />
 
               {popularMain && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  
                   {/* Cột Trái: 1 Bài Lớn */}
                   <Link
-                    // 👇 QUAN TRỌNG: Dùng slug
                     href={`/posts/${popularMain.slug}`} 
-                    className="group block"
+                    className="group block relative"
                   >
-                    <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-200 mb-4 shadow-sm relative">
+                    <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 mb-5 shadow-sm relative border border-gray-100">
                       {popularMain.image_url ? (
                         <img
                           src={popularMain.image_url}
                           alt={popularMain.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gray-100">
                           <span className="text-gray-400">No image</span>
                         </div>
                       )}
-                      <div className="absolute top-4 left-4 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-md">
-                        Featured
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="absolute top-4 left-4 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-md z-10">
+                        Mới nhất
                       </div>
                     </div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors line-clamp-2 leading-tight">
+                    
+                    <h3 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-3 group-hover:text-blue-700 transition-colors line-clamp-2 leading-tight">
                       {popularMain.title}
                     </h3>
-                    <p className="text-gray-600 text-base mb-3 line-clamp-2 leading-relaxed">
+                    <p className="text-gray-600 text-base mb-4 line-clamp-2 leading-relaxed">
                       {popularMain.description}
                     </p>
                     <PostMeta date={formatDate(popularMain.created_at)} />
                   </Link>
 
                   {/* Cột Phải: 2 Bài Nhỏ */}
-                  <div className="flex flex-col gap-6">
+                  <div className="flex flex-col gap-8 justify-center">
                     {popularSide.map((post) => (
                       <Link
                         key={post.id}
-                        // 👇 QUAN TRỌNG: Dùng slug
                         href={`/posts/${post.slug}`}
-                        className="group flex gap-5 items-start"
+                        className="group flex gap-5 items-center"
                       >
-                        <div className="w-40 h-28 flex-shrink-0 rounded-xl overflow-hidden bg-gray-200 shadow-sm relative">
+                        <div className="w-32 h-24 sm:w-48 sm:h-32 flex-shrink-0 rounded-xl overflow-hidden bg-gray-100 shadow-sm relative border border-gray-100">
                           {post.image_url ? (
                             <img
                               src={post.image_url}
@@ -231,8 +260,8 @@ export default function BlogPage() {
                             </div>
                           )}
                         </div>
-                        <div className="flex-1 min-w-0 py-1">
-                          <div className="text-xs text-blue-600 font-bold uppercase mb-1">News</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-blue-600 font-bold uppercase mb-1.5 tracking-wide">Tin tức</div>
                           <h4 className="font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors line-clamp-2 text-lg leading-snug">
                             {post.title}
                           </h4>
@@ -246,14 +275,14 @@ export default function BlogPage() {
             </section>
 
             {/* Divider */}
-            <div className="border-t border-dashed border-gray-300 relative">
-               <span className="absolute left-1/2 -top-3 -translate-x-1/2 bg-gray-50 px-2 text-gray-400">✦</span>
+            <div className="border-t border-gray-200 relative">
+               <div className="absolute left-1/2 -top-3 -translate-x-1/2 bg-gray-50 px-4 text-gray-300 text-xl">✦</div>
             </div>
 
             {/* 2. TRENDING POST SECTION */}
             {trendingPosts.length > 0 && (
               <section>
-                <SectionHeader title="Trending Post" subtitle="Xu hướng bài viết mới nhất" />
+                <SectionHeader title="Xu Hướng" subtitle="Khám phá thêm các bài viết thú vị" />
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   {trendingPosts.map((post) => (
@@ -273,27 +302,27 @@ export default function BlogPage() {
 
 function SectionHeader({ title, subtitle }) {
   return (
-    <div className="text-center mb-10">
-      <div className="inline-block relative px-4">
-        <h2 className="text-3xl font-extrabold text-gray-900 mb-1 uppercase tracking-wide relative z-10">{title}</h2>
-        <div className="absolute bottom-1 left-0 w-full h-3 bg-blue-100 -z-0 -skew-x-12 opacity-60"></div>
+    <div className="text-center mb-12">
+      <div className="inline-block relative px-2">
+        <h2 className="text-4xl font-extrabold text-gray-900 mb-2 uppercase tracking-wide relative z-10 font-sans">{title}</h2>
+        <div className="absolute bottom-2 left-0 w-full h-4 bg-blue-100 -z-0 -skew-x-12 opacity-80 rounded-sm"></div>
       </div>
-      <p className="text-gray-500 text-sm mt-2">{subtitle}</p>
+      <p className="text-gray-500 font-medium mt-1">{subtitle}</p>
     </div>
   );
 }
 
 function PostMeta({ date, small = false }) {
   return (
-    <div className={`flex items-center gap-3 text-gray-500 ${small ? 'text-xs' : 'text-sm'}`}>
+    <div className={`flex items-center gap-3 text-gray-400 ${small ? 'text-xs' : 'text-sm'}`}>
       <div className="flex items-center gap-1.5">
-        <div className={`rounded-full bg-gray-200 flex items-center justify-center overflow-hidden ${small ? 'w-5 h-5' : 'w-6 h-6'}`}>
-          <User className={small ? 'w-3 h-3 text-gray-500' : 'w-4 h-4 text-gray-500'} />
+        <div className={`rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border border-gray-300 ${small ? 'w-5 h-5' : 'w-6 h-6'}`}>
+          <User className={small ? 'w-3 h-3 text-gray-500' : 'w-3.5 h-3.5 text-gray-500'} />
         </div>
-        <span className="font-medium text-gray-700">Admin</span>
+        <span className="font-semibold text-gray-500">Admin</span>
       </div>
       <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-      <span>{date}</span>
+      <span className="font-medium text-gray-400">{date}</span>
     </div>
   );
 }
@@ -301,11 +330,10 @@ function PostMeta({ date, small = false }) {
 function PostCard({ post, formatDate }) {
   return (
     <Link
-      // 👇 QUAN TRỌNG: Dùng slug
       href={`/posts/${post.slug}`}
-      className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-transparent hover:border-gray-100"
+      className="group block bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-gray-100 flex flex-col h-full"
     >
-      <div className="aspect-[16/10] overflow-hidden bg-gray-200 relative">
+      <div className="aspect-[16/10] overflow-hidden bg-gray-100 relative">
         {post.image_url ? (
           <img
             src={post.image_url}
@@ -317,18 +345,20 @@ function PostCard({ post, formatDate }) {
             <span className="text-gray-400">No image</span>
           </div>
         )}
+        <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-10 transition-opacity"></div>
       </div>
-      <div className="p-5">
-        <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded">News</span>
+      
+      <div className="p-6 flex flex-col flex-1">
+        <div className="flex items-center gap-2 mb-3">
+            <span className="text-[10px] font-bold uppercase text-blue-700 bg-blue-50 px-2 py-1 rounded tracking-wide">Article</span>
         </div>
-        <h3 className="font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors line-clamp-2 text-lg leading-snug">
+        <h3 className="font-bold text-gray-900 mb-3 group-hover:text-blue-700 transition-colors line-clamp-2 text-xl leading-snug">
           {post.title}
         </h3>
-        <p className="text-gray-500 text-sm mb-4 line-clamp-2 leading-relaxed">
+        <p className="text-gray-500 text-sm mb-5 line-clamp-3 leading-relaxed flex-1">
           {post.description}
         </p>
-        <div className="border-t border-gray-100 pt-3 mt-auto">
+        <div className="border-t border-gray-100 pt-4 mt-auto">
             <PostMeta date={formatDate(post.created_at)} small />
         </div>
       </div>
