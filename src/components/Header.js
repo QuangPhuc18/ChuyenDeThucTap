@@ -5,18 +5,51 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Search, ShoppingCart, ChevronLeft, ChevronRight, X, Loader2, User, LogOut, FileText } from 'lucide-react'
 import httpAxios from '@/services/httpAxios'
-import UserService from '@/services/UserService' // Đảm bảo import UserService
+import UserService from '@/services/UserService'
+import BannerService from '@/services/BannerService' // IMPORT BANNER SERVICE
 
 // Placeholder avatar nếu user chưa có ảnh
 const AVATAR_PLACEHOLDER = "https://ui-avatars.com/api/?background=random&color=fff&name=";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+
+// Dữ liệu mặc định (Fallback khi chưa load xong API hoặc API lỗi)
+const DEFAULT_SLIDES = [
+  {
+    image: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=1600&q=80',
+    category: 'ARTISAN COFFEE',
+    title: 'We serve the richest coffee in the city!',
+    description: 'Experience the perfect blend of premium Arabica beans, expertly roasted to bring out rich flavors and aromatic notes.',
+    buttonText: 'Order Coffee',
+    accentColor: 'amber'
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1564890369478-c89ca6d9cde9?w=1600&q=80',
+    category: 'PREMIUM TEA',
+    title: 'Discover the essence of premium tea leaves',
+    description: 'Indulge in our carefully curated selection of organic teas, sourced from the finest tea gardens around the world.',
+    buttonText: 'Explore Tea',
+    accentColor: 'emerald'
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1600&q=80',
+    category: 'COZY ATMOSPHERE',
+    title: 'Your perfect place to relax and unwind',
+    description: 'From classic espresso to exotic tea blends, every cup is crafted with precision in our warm, welcoming space.',
+    buttonText: 'Visit Us',
+    accentColor: 'orange'
+  }
+];
 
 export default function CoffeeHeader() {
   const router = useRouter();
   
+  // --- STATE BANNER (MỚI) ---
+  const [slides, setSlides] = useState(DEFAULT_SLIDES);
+  const [currentSlide, setCurrentSlide] = useState(0);
+
   // --- STATE CŨ (Giữ nguyên) ---
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [cartCount, setCartCount] = useState(0)
-  const [currentSlide, setCurrentSlide] = useState(0)
 
   // --- STATE TÌM KIẾM (Giữ nguyên) ---
   const [keyword, setKeyword] = useState('')
@@ -24,37 +57,55 @@ export default function CoffeeHeader() {
   const [loadingSearch, setLoadingSearch] = useState(false)
   const searchTimeoutRef = useRef(null)
 
-  // --- STATE USER (MỚI) ---
+  // --- STATE USER (Giữ nguyên) ---
   const [user, setUser] = useState(null)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
 
-  // Dữ liệu Carousel (Giữ nguyên)
-  const slides = [
-    {
-      image: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=1600&q=80',
-      category: 'ARTISAN COFFEE',
-      title: 'We serve the richest coffee in the city!',
-      description: 'Experience the perfect blend of premium Arabica beans, expertly roasted to bring out rich flavors and aromatic notes.',
-      buttonText: 'Order Coffee',
-      accentColor: 'amber'
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1564890369478-c89ca6d9cde9?w=1600&q=80',
-      category: 'PREMIUM TEA',
-      title: 'Discover the essence of premium tea leaves',
-      description: 'Indulge in our carefully curated selection of organic teas, sourced from the finest tea gardens around the world.',
-      buttonText: 'Explore Tea',
-      accentColor: 'emerald'
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1600&q=80',
-      category: 'COZY ATMOSPHERE',
-      title: 'Your perfect place to relax and unwind',
-      description: 'From classic espresso to exotic tea blends, every cup is crafted with precision in our warm, welcoming space.',
-      buttonText: 'Visit Us',
-      accentColor: 'orange'
-    }
-  ]
+  // --- LOGIC LẤY BANNER TỪ API (MỚI) ---
+  useEffect(() => {
+    const fetchBanners = async () => {
+        try {
+            // Gọi API lấy banner. Có thể thêm params như { position: 'slideshow', status: 1 } nếu backend hỗ trợ
+            const res = await BannerService.getList({ status: 1, limit: 5 });
+            
+            // Xử lý dữ liệu trả về (tùy thuộc cấu trúc response của Laravel)
+            const bannerData = res.data?.data || res.data || [];
+
+            if (Array.isArray(bannerData) && bannerData.length > 0) {
+                // Map dữ liệu từ API sang cấu trúc UI của Slider
+                const mappedSlides = bannerData.map((banner, index) => {
+                    // Xử lý URL ảnh
+                    let imageUrl = banner.image;
+                    if (imageUrl && !imageUrl.startsWith('http')) {
+                        imageUrl = `${API_BASE_URL}/storage/${imageUrl}`;
+                    }
+                    if (!imageUrl) imageUrl = DEFAULT_SLIDES[index % 3].image; // Fallback ảnh
+
+                    // Xoay vòng màu sắc để giữ giao diện đẹp (amber -> emerald -> orange)
+                    const colors = ['amber', 'emerald', 'orange'];
+                    const accentColor = colors[index % colors.length];
+
+                    return {
+                        id: banner.id,
+                        image: imageUrl,
+                        category: 'HIGHLIGHTS', // Hoặc lấy banner.name làm category
+                        title: banner.name || 'Welcome to Coffea',
+                        description: banner.description || 'Enjoy the best coffee in town.',
+                        buttonText: 'Discover Now', // Text mặc định
+                        accentColor: accentColor,
+                        link: banner.link || '#' // Nếu banner có link
+                    };
+                });
+                setSlides(mappedSlides);
+            }
+        } catch (error) {
+            console.error("Lỗi tải banner:", error);
+            // Nếu lỗi thì giữ nguyên DEFAULT_SLIDES
+        }
+    };
+
+    fetchBanners();
+  }, []);
 
   // Logic Giỏ hàng (Giữ nguyên)
   useEffect(() => {
@@ -79,23 +130,22 @@ export default function CoffeeHeader() {
 
   // Auto-play carousel (Giữ nguyên)
   useEffect(() => {
+    if (slides.length <= 1) return; // Không auto play nếu chỉ có 1 slide
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length)
     }, 5000)
     return () => clearInterval(timer)
   }, [slides.length])
 
-  // --- LOGIC USER (MỚI) ---
+  // --- LOGIC USER (Giữ nguyên) ---
   useEffect(() => {
     const fetchUser = async () => {
         const token = localStorage.getItem('authToken');
         if (token) {
             try {
-                // Lấy thông tin user từ localStorage nếu có (để hiển thị nhanh)
                 const cachedUser = localStorage.getItem('user');
                 if (cachedUser) setUser(JSON.parse(cachedUser));
 
-                // Gọi API lấy thông tin mới nhất
                 const res = await UserService.getProfile();
                 if (res && res.data) {
                     setUser(res.data);
@@ -103,7 +153,6 @@ export default function CoffeeHeader() {
                 }
             } catch (error) {
                 console.error("Lỗi lấy thông tin user:", error);
-                // Nếu lỗi token hết hạn -> logout
                 if (error.response && error.response.status === 401) {
                     handleLogout();
                 }
@@ -120,7 +169,7 @@ export default function CoffeeHeader() {
       router.push('/auth/login');
   };
 
-  // --- LOGIC TÌM KIẾM ---
+  // --- LOGIC TÌM KIẾM (Giữ nguyên) ---
   const handleSearchChange = (e) => {
     const value = e.target.value;
     setKeyword(value);
@@ -179,13 +228,12 @@ export default function CoffeeHeader() {
       : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(numberAmount);
   }
 
-  // Xử lý avatar URL
   const getAvatarUrl = (user) => {
       if (!user) return null;
       if (user.avatar) {
           return user.avatar.startsWith('http') 
             ? user.avatar 
-            : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000'}/storage/${user.avatar}`;
+            : `${API_BASE_URL}/storage/${user.avatar}`;
       }
       return AVATAR_PLACEHOLDER + encodeURIComponent(user.name);
   };
@@ -203,11 +251,11 @@ export default function CoffeeHeader() {
 
             {/* Navigation */}
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="/" className="text-white text-sm font-medium hover:text-amber-200 transition">Trang chủ</a>
-              <a href="/profile" className="text-white text-sm font-medium hover:text-amber-200 transition">Trang cá nhân</a>
-              <a href="/posts" className="text-white text-sm font-medium hover:text-amber-200 transition">Bài viết</a>
-              <a href="/product" className="text-white text-sm font-medium hover:text-amber-200 transition">Cửa hàng</a>
-              <a href="/Contact" className="text-white text-sm font-medium hover:text-amber-200 transition">Liên hệ</a>
+              <Link href="/" className="text-white text-sm font-medium hover:text-amber-200 transition">Trang chủ</Link>
+              <Link href="/profile" className="text-white text-sm font-medium hover:text-amber-200 transition">Trang cá nhân</Link>
+              <Link href="/posts" className="text-white text-sm font-medium hover:text-amber-200 transition">Bài viết</Link>
+              <Link href="/product" className="text-white text-sm font-medium hover:text-amber-200 transition">Cửa hàng</Link>
+              <Link href="/Contact" className="text-white text-sm font-medium hover:text-amber-200 transition">Liên hệ</Link>
             </nav>
 
             {/* Actions: Search + Cart + User */}
@@ -233,7 +281,7 @@ export default function CoffeeHeader() {
                 )}
               </Link>
 
-              {/* User Account Section (New) */}
+              {/* User Account Section */}
               {user ? (
                   <div className="relative">
                       <button 
@@ -273,7 +321,6 @@ export default function CoffeeHeader() {
                           </div>
                       )}
                       
-                      {/* Overlay để đóng menu khi click ra ngoài */}
                       {isUserMenuOpen && (
                           <div 
                             className="fixed inset-0 z-40" 
@@ -282,7 +329,6 @@ export default function CoffeeHeader() {
                       )}
                   </div>
               ) : (
-                  // Nút Đăng nhập khi chưa có user
                   <Link 
                     href="/auth/login" 
                     className="text-white text-sm font-medium hover:text-amber-200 transition border border-white/30 px-4 py-1.5 rounded-full hover:bg-white/10"
@@ -297,7 +343,6 @@ export default function CoffeeHeader() {
           <div className={`mt-4 transition-all duration-300 ease-in-out relative ${isSearchOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
             {isSearchOpen && (
                 <div className="w-full max-w-2xl mx-auto relative">
-                    {/* Input Field */}
                     <div className="relative">
                         <input
                             id="searchInput"
@@ -317,11 +362,8 @@ export default function CoffeeHeader() {
                         )}
                     </div>
 
-                    {/* Dropdown Results */}
                     {keyword && (
                         <div className="absolute top-full left-0 right-0 bg-white rounded-b-lg shadow-2xl overflow-hidden mt-1 z-50 text-gray-800">
-                            
-                            {/* Gợi ý từ khóa */}
                             <div className="p-3 border-b border-gray-100">
                                 <p className="text-sm font-semibold text-gray-500 mb-2">Có phải bạn muốn tìm</p>
                                 <ul className="space-y-1 text-sm">
@@ -334,7 +376,6 @@ export default function CoffeeHeader() {
                                 </ul>
                             </div>
 
-                            {/* Danh sách sản phẩm */}
                             <div className="p-3">
                                 <p className="text-sm font-semibold text-gray-500 mb-2">Sản phẩm gợi ý</p>
                                 {loadingSearch ? (
@@ -342,7 +383,7 @@ export default function CoffeeHeader() {
                                 ) : searchResults.length > 0 ? (
                                     <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar">
                                         {searchResults.map((product) => {
-                                            const imageUrl = product.image_url || (product.thumbnail ? `http://127.0.0.1:8000/storage/${product.thumbnail}` : null);
+                                            const imageUrl = product.image_url || (product.thumbnail ? `${API_BASE_URL}/storage/${product.thumbnail}` : null);
                                             const displayPrice = product.price_buy;
 
                                             return (
@@ -351,7 +392,6 @@ export default function CoffeeHeader() {
                                                     href={`/product/${product.id}`} 
                                                     className="flex items-center gap-4 hover:bg-gray-50 p-2 rounded-lg transition group"
                                                 >
-                                                    {/* Ảnh sản phẩm */}
                                                     <div className="w-14 h-14 flex-shrink-0 bg-gray-100 rounded-md overflow-hidden border border-gray-200">
                                                         {imageUrl ? (
                                                             <img src={imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-300" />
@@ -360,7 +400,6 @@ export default function CoffeeHeader() {
                                                         )}
                                                     </div>
                                                     
-                                                    {/* Thông tin */}
                                                     <div className="flex-1">
                                                         <h4 className="text-sm font-medium text-gray-900 group-hover:text-amber-600 transition line-clamp-2">
                                                             {product.name}
@@ -382,7 +421,6 @@ export default function CoffeeHeader() {
                                 )}
                             </div>
                             
-                            {/* Footer Dropdown */}
                             {searchResults.length > 0 && (
                                 <div className="bg-gray-50 p-2 text-center border-t border-gray-100">
                                     <Link href={`/product?search=${keyword}`} className="text-sm text-blue-600 hover:underline">
@@ -398,11 +436,11 @@ export default function CoffeeHeader() {
         </div>
       </header>
 
-      {/* Hero Carousel (Giữ nguyên) */}
+      {/* Hero Carousel (Dynamic Data) */}
       <div className="relative min-h-screen overflow-hidden">
         {slides.map((slide, index) => (
           <div
-            key={index}
+            key={slide.id || index}
             className={`absolute inset-0 transition-all duration-700 ease-in-out ${
               index === currentSlide ? 'opacity-100 translate-x-0' : index < currentSlide ? 'opacity-0 -translate-x-full' : 'opacity-0 translate-x-full'
             }`}
@@ -411,10 +449,12 @@ export default function CoffeeHeader() {
             <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30"></div>
             <div className="container mx-auto px-6 relative z-10 h-full flex items-center">
               <div className="max-w-2xl">
-                <p className={`${getAccentColorClass(slide.accentColor)} text-sm font-medium tracking-wider mb-4 animate-fade-in`}>{slide.category}</p>
+                <p className={`${getAccentColorClass(slide.accentColor)} text-sm font-medium tracking-wider mb-4 animate-fade-in uppercase`}>{slide.category}</p>
                 <h2 className="text-white text-5xl md:text-6xl font-serif leading-tight mb-6 animate-slide-up">{slide.title}</h2>
                 <p className="text-white/90 text-lg mb-8 leading-relaxed animate-slide-up" style={{ animationDelay: '0.1s' }}>{slide.description}</p>
-                <button className={`bg-white text-gray-900 px-8 py-3 rounded-full font-medium ${getButtonColorClass(slide.accentColor)} transition transform hover:scale-105 shadow-lg animate-slide-up`} style={{ animationDelay: '0.2s' }}>{slide.buttonText}</button>
+                <Link href={slide.link || "/product"} className={`inline-block bg-white text-gray-900 px-8 py-3 rounded-full font-medium ${getButtonColorClass(slide.accentColor)} transition transform hover:scale-105 shadow-lg animate-slide-up`} style={{ animationDelay: '0.2s' }}>
+                    {slide.buttonText}
+                </Link>
               </div>
             </div>
           </div>

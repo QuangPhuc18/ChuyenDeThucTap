@@ -83,12 +83,12 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/contact" className="hover:text-amber-500 transition flex items-center gap-2">
+                <Link href="/Contact" className="hover:text-amber-500 transition flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-neutral-600 rounded-full"></span> Liên hệ
                 </Link>
               </li>
               <li>
-                <Link href="/privacy-policy" className="hover:text-amber-500 transition flex items-center gap-2">
+                <Link href="/posts/chinh-sach-doi-tra-hoan-tien-cam-ket-chat-luong" className="hover:text-amber-500 transition flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-neutral-600 rounded-full"></span> Chính sách bảo mật
                 </Link>
               </li>
@@ -112,7 +112,7 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/payment-policy" className="hover:text-amber-500 transition flex items-center gap-2">
+                <Link href="/posts/chinh-sach-doi-tra-hoan-tien-cam-ket-chat-luong" className="hover:text-amber-500 transition flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4" /> Chính sách đổi trả & Hoàn tiền
                 </Link>
               </li>

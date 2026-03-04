@@ -23,10 +23,11 @@ export default function LoginPage() {
     return val && val.trim().length > 0;
   }
 
-  const handleSubmit = async (ev) => {
+const handleSubmit = async (ev) => {
     ev.preventDefault()
     setError('')
 
+    // 1. Validate Input (Giữ nguyên)
     if (!validateInput(loginInput)) {
       setError('Vui lòng nhập Email, Số điện thoại hoặc Tên đăng nhập.')
       return
@@ -39,49 +40,56 @@ export default function LoginPage() {
     setLoading(true)
     
     try {
-      // 1. Gọi API login (truyền loginInput thay vì email)
+      // 2. Gọi API
       const res = await UserService.login(loginInput, password);
 
-      // 2. Kiểm tra status trả về từ Backend
+      // 3. Xử lý kết quả
       if (res && res.status) {
-          // A. Lưu Token (Quan trọng: Key phải là 'authToken' khớp với httpAxios.js)
+          // A. Lưu Token & User
           localStorage.setItem('authToken', res.access_token)
-          
-          // B. Lưu thông tin User
           localStorage.setItem('user', JSON.stringify(res.data))
           
-          // C. Xử lý "Ghi nhớ đăng nhập"
+          // B. Xử lý "Ghi nhớ đăng nhập"
           if (remember) {
             localStorage.setItem('rememberMe', '1')
-            // Lưu lại tên đăng nhập để lần sau tự điền
             localStorage.setItem('savedLogin', loginInput)
           } else {
             localStorage.removeItem('rememberMe')
             localStorage.removeItem('savedLogin')
           }
 
-          // D. Bắn sự kiện để Header cập nhật Avatar ngay lập tức
+          // C. Cập nhật Header
           if (typeof window !== 'undefined') {
               window.dispatchEvent(new Event('auth:login'));
           }
 
-          // E. Chuyển hướng
-          router.push(redirectTo)
+          // D. LOGIC ĐIỀU HƯỚNG (Mới thêm vào)
+          // Lấy role từ dữ liệu user trả về (Backend trả về trong res.data)
+          const userRole = res.data?.roles; 
+
+          if (userRole === 'admin') {
+              // Nếu là Admin -> Vào trang quản trị
+              router.push('/admin'); 
+          } else {
+              // Nếu là Khách -> Về trang chủ hoặc trang trước đó
+              router.push(redirectTo); 
+          }
+
       } else {
-          // Trường hợp API trả về 200 nhưng logic báo lỗi (status: false)
+          // Lỗi từ backend trả về (ví dụ sai pass nhưng status 200)
           setError(res.message || 'Đăng nhập thất bại.');
       }
 
     } catch (err) {
       console.error("Login Error:", err)
       
-      // Xử lý hiển thị lỗi từ Backend (Laravel trả về 401 hoặc 422)
+      // Xử lý lỗi (401, 422, 500...)
       let errorMessage = 'Đăng nhập thất bại. Vui lòng kiểm tra lại.';
       
       if (err.response && err.response.data) {
-          errorMessage = err.response.data.message || errorMessage;
+         errorMessage = err.response.data.message || errorMessage;
       } else if (err.message) {
-          errorMessage = err.message;
+         errorMessage = err.message;
       }
       
       setError(errorMessage)
@@ -89,7 +97,6 @@ export default function LoginPage() {
       setLoading(false)
     }
   }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-white flex items-center justify-center py-12 px-4">
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
@@ -198,7 +205,7 @@ export default function LoginPage() {
                 <span className="text-gray-600">Ghi nhớ đăng nhập</span>
               </label>
 
-              <Link href="/forgot-password" className="text-sm text-amber-900 hover:underline">Quên mật khẩu?</Link>
+              <Link href="/auth/forgotpassword" className="text-sm text-amber-900 hover:underline">Quên mật khẩu?</Link>
             </div>
 
             <div>
